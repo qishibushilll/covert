@@ -341,4 +341,4 @@ Environment note:
 - The same `.venv` works when run outside the sandbox, so this is a sandbox path-visibility issue, not a project virtualenv failure.
 - Final validation used `.venv` outside the sandbox.
 
-Commit: `2599211`
+Commit: `d6acdf2`
