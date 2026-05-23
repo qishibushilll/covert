@@ -428,4 +428,4 @@ Result:
 - The dry-run entered payload generation and browser preview immediately, without waiting for the 20-second realtime learning window to finish.
 - No real send was performed.
 
-Commit: pending
+Commit: `9065558`
