@@ -50,13 +50,15 @@ def apply_online_style_if_requested(args):
     if args.fixed_templates:
         raise SystemExit("--online-style-learning cannot be combined with --fixed-templates")
 
+    source_room = online_style.resolve_source_room(args.room, args.online_style_source_room)
     print(
         f"[online-style] passive staged learning: stages={args.online_style_stages} "
-        f"seconds={args.online_style_seconds} target={args.online_style_target}",
+        f"seconds={args.online_style_seconds} target={args.online_style_target} "
+        f"source_room={source_room} send_room={args.room}",
         flush=True,
     )
     result = online_style.staged_online_style_learning(
-        room_display_id=args.room,
+        room_display_id=source_room,
         stages=args.online_style_stages,
         seconds=args.online_style_seconds,
         target_count=args.online_style_target,
@@ -66,9 +68,15 @@ def apply_online_style_if_requested(args):
         activate=False,
     )
     templates_path = result.get("templates_path")
-    if templates_path:
+    if online_style.should_apply_learned_templates(args.room, source_room, templates_path):
         args.style_file = str(templates_path)
         print(f"[online-style] using refreshed templates: {templates_path}", flush=True)
+    elif templates_path:
+        print(
+            "[online-style] learned source-room templates kept for pacing/audit only; "
+            "send-room templates unchanged",
+            flush=True,
+        )
     return result
 
 
@@ -98,6 +106,11 @@ def main():
         help="Comma/space separated room ids authorized for real sending. Defaults to COVLBCG_AUTHORIZED_ROOMS or 23087172.",
     )
     parser.add_argument("--online-style-learning", action="store_true")
+    parser.add_argument(
+        "--online-style-source-room",
+        type=int,
+        help="Optional room id to passively learn for activity pacing and audit baselines. Real sends still target --room.",
+    )
     parser.add_argument("--online-style-stages", type=int, default=online_style.DEFAULT_ONLINE_STYLE_STAGES)
     parser.add_argument("--online-style-seconds", type=int, default=online_style.DEFAULT_ONLINE_STYLE_SECONDS)
     parser.add_argument("--online-style-target", type=int, default=online_style.DEFAULT_ONLINE_STYLE_TARGET)
@@ -131,6 +144,7 @@ def main():
     style_learning = apply_online_style_if_requested(args)
     actual_room_id, core, payloads, messages = build_messages(args)
     activity = (style_learning or {}).get("activity", {})
+    learning_source_room = (style_learning or {}).get("room_display_id", args.room)
     adaptive_sleep = online_style.conservative_sleep_from_activity(
         base_sleep=args.sleep,
         min_sleep=args.min_sleep,
@@ -189,6 +203,7 @@ def main():
 
     print(f"room_display_id={args.room}")
     print(f"room_id={actual_room_id}")
+    print(f"online_style_source_room={learning_source_room}")
     print(f"message={args.message!r}")
     print(f"replicas={args.replicas}")
     print(f"fillers={args.fillers}")

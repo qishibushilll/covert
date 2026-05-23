@@ -24,7 +24,7 @@ Use the project virtual environment:
 .\.venv\Scripts\python.exe -X utf8
 ```
 
-The environment is based on Python 3.12 and the core dependency list is in
+The environment is based on Python 3.13 and the core dependency list is in
 `requirements.txt`.
 
 Install/update the editable package after structural changes:
@@ -76,6 +76,18 @@ spacing:
 
 The adaptive spacing is conservative: observed low room activity can increase
 the interval, but the sender will not go below `--min-sleep`.
+
+To learn activity from a separate source room while sending only to the
+authorized room, keep `--room` as the authorized send room and add
+`--online-style-source-room`:
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 .\scripts\bilibili\send_browser_cdp.py --room 23087172 --online-style-source-room 7243837 --message 'hi#' --replicas 1 --fillers 0 --online-style-learning --online-style-stages 2 --online-style-seconds 30 --adaptive-sleep --sleep 10 --min-sleep 10 --max-comments 30
+```
+
+When the source room differs from the send room, learned source-room templates
+are used only for pacing and audit baselines. They are not applied as send-room
+comment templates.
 
 Optional style gate:
 

@@ -158,3 +158,36 @@ Validation:
 Result: passed. The dry-run did not use `--send`; no real send was performed. The LLM audit path returned `status=stop` before any model call because the test threshold required 999 baseline samples.
 
 Commit: `ea587dc`
+
+## Update: 2026-05-23 Cross-Room Learning Source
+
+Files changed:
+
+- `src/live_bullet_covert/online_style.py`
+- `scripts/bilibili/send_browser_cdp.py`
+- `scripts/bilibili/probes/full_http_sender.py`
+- `tests/test_online_style.py`
+- `README.md`
+- `docs/handoff/WORK_LOG.md`
+
+Behavioral summary:
+
+- Added `--online-style-source-room` to passively learn activity from a separate room while keeping real sends targeted at `--room`.
+- Intended usage for the current test setup: learn from room `7243837`, send only to authorized room `23087172`.
+- Cross-room learning is conservative: source-room activity can only influence pacing/audit baselines; source-room templates are not applied as send-room templates.
+- Existing authorization checks still run against `--room`, and real sending still requires `--send --confirm-authorized`.
+- Updated README to note the active `.venv` is Python 3.13.
+
+Validation:
+
+```powershell
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 -m py_compile '.\src\live_bullet_covert\online_style.py' '.\scripts\bilibili\send_browser_cdp.py' '.\scripts\bilibili\probes\full_http_sender.py' '.\tests\test_online_style.py'
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\tests\test_online_style.py'
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\tests\test_style_gate.py'
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\tests\test_llm_style_audit.py'
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\scripts\bilibili\probes\full_http_sender.py' --room 23087172 --online-style-source-room 7243837 --message 'hi#' --replicas 1 --fillers 0 --sleep 10 --online-style-learning --online-style-stages 1 --online-style-seconds 1 --online-style-target 1 --online-style-min-samples 999 --adaptive-sleep --max-comments 30
+```
+
+Result: passed. The dry-run showed `room_display_id=23087172`, `online_style_source_room=7243837`, and `effective_send_sleep=30.00`; no real send was performed.
+
+Commit: `PENDING`

@@ -15,6 +15,20 @@ DEFAULT_ACTIVITY_QUIET_MULTIPLIER = 3.0
 DEFAULT_ACTIVITY_MODERATE_MULTIPLIER = 1.5
 
 
+def resolve_source_room(send_room_display_id, source_room_display_id=None):
+    if source_room_display_id is None:
+        return int(send_room_display_id)
+    return int(source_room_display_id)
+
+
+def is_same_room(left_room_display_id, right_room_display_id):
+    return int(left_room_display_id) == int(right_room_display_id)
+
+
+def should_apply_learned_templates(send_room_display_id, source_room_display_id, templates_path):
+    return bool(templates_path) and is_same_room(send_room_display_id, source_room_display_id)
+
+
 def summarize_activity(stage_summaries):
     observed = sum(stage.get("observed_count", 0) for stage in stage_summaries)
     elapsed = sum(stage.get("elapsed_seconds", 0.0) for stage in stage_summaries)
@@ -141,6 +155,7 @@ def staged_online_style_learning(
         )
 
     return {
+        "room_display_id": room_display_id,
         "room_id": room_id,
         "comments": all_comments,
         "stage_summaries": stage_summaries,
