@@ -9,6 +9,7 @@ from live_bullet_covert import online_style
 from live_bullet_covert import sender
 from live_bullet_covert import room_style
 from live_bullet_covert import send_policy
+from live_bullet_covert import style_gate
 
 
 for stream in (sys.stdout, sys.stderr):
@@ -105,6 +106,11 @@ def main():
     parser.add_argument("--adaptive-sleep", action="store_true")
     parser.add_argument("--activity-quiet-cpm", type=float, default=online_style.DEFAULT_ACTIVITY_QUIET_CPM)
     parser.add_argument("--activity-normal-cpm", type=float, default=online_style.DEFAULT_ACTIVITY_NORMAL_CPM)
+    parser.add_argument("--style-gate", action="store_true")
+    parser.add_argument("--style-gate-max-z", type=float, default=style_gate.DEFAULT_STYLE_GATE_MAX_Z)
+    parser.add_argument("--style-gate-max-reject-ratio", type=float, default=style_gate.DEFAULT_STYLE_GATE_MAX_REJECT_RATIO)
+    parser.add_argument("--style-gate-min-samples", type=int, default=style_gate.DEFAULT_STYLE_GATE_MIN_SAMPLES)
+    parser.add_argument("--style-gate-delay-multiplier", type=float, default=style_gate.DEFAULT_STYLE_GATE_DELAY_MULTIPLIER)
     args = parser.parse_args()
 
     send_policy.validate_authorized_send_context(
@@ -124,6 +130,25 @@ def main():
         normal_cpm=args.activity_normal_cpm,
     )
     send_sleep = adaptive_sleep if args.adaptive_sleep and style_learning else max(args.sleep, args.min_sleep)
+    gate_report = None
+    if args.style_gate:
+        baseline_comments = (style_learning or {}).get("comments") or core.room_comments
+        gate_report = style_gate.evaluate_messages(
+            messages,
+            baseline_comments,
+            max_z=args.style_gate_max_z,
+            max_reject_ratio=args.style_gate_max_reject_ratio,
+            min_samples=args.style_gate_min_samples,
+            skip_messages={sender.JOIN_COMMAND, sender.SYNC_COMMAND, "fin"},
+        )
+        print("[style-gate]")
+        print(style_gate.summarize_report(gate_report))
+        if gate_report["status"] == "insufficient_samples" and args.send:
+            raise SystemExit("style gate has insufficient samples; stopping real send")
+        if gate_report["status"] == "stop" and args.send:
+            raise SystemExit("style gate requested stop; not sending")
+        if gate_report["status"] == "delay":
+            send_sleep *= max(1.0, args.style_gate_delay_multiplier)
 
     print(f"room_display_id={args.room}")
     print(f"room_id={actual_room_id}")
@@ -138,6 +163,7 @@ def main():
     print(f"min_send_sleep={args.min_sleep}")
     print(f"adaptive_sleep_enabled={bool(args.adaptive_sleep)}")
     print(f"activity_cpm={activity.get('comments_per_minute', 0.0):.2f}")
+    print(f"style_gate_enabled={bool(args.style_gate)}")
     print(f"effective_send_sleep={send_sleep:.2f}")
     print(f"authorized_rooms={sorted(send_policy.authorized_rooms(args.authorized_rooms))}")
     print("preview:")

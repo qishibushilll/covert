@@ -91,3 +91,35 @@ Validation:
 Result: passed.
 
 Commit: `9086f96` introduced this work-log discipline entry.
+
+## Update: 2026-05-23 Conservative Style Gate
+
+Files changed:
+
+- `src/live_bullet_covert/style_gate.py`
+- `scripts/bilibili/send_browser_cdp.py`
+- `scripts/bilibili/probes/full_http_sender.py`
+- `tests/test_style_gate.py`
+- `README.md`
+- `docs/handoff/WORK_LOG.md`
+
+Behavioral summary:
+
+- Added a conservative style gate that scores queued messages against passively collected room samples.
+- The gate can return `pass`, `delay`, `stop`, or `insufficient_samples`.
+- The gate only delays or stops real sending when style deviation is high; it does not generate or rewrite comments.
+- Integrated the gate into both browser-CDP and HTTP probe sender entry points through `--style-gate`.
+- Documented the option in README.
+
+Validation:
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 -m py_compile .\src\live_bullet_covert\style_gate.py .\scripts\bilibili\send_browser_cdp.py .\scripts\bilibili\probes\full_http_sender.py .\tests\test_style_gate.py
+.\.venv\Scripts\python.exe -X utf8 .\tests\offline_baseline_test.py
+.\.venv\Scripts\python.exe -X utf8 .\tests\test_style_gate.py
+.\.venv\Scripts\python.exe -X utf8 .\scripts\bilibili\probes\full_http_sender.py --room 23087172 --message hi# --replicas 1 --fillers 0 --sleep 10 --style-gate --style-file data\profiles\popular_style_profiles_ws\popular_templates.txt --max-comments 30
+```
+
+Result: passed. The dry-run style gate reported `status=pass`; no real send was performed.
+
+Commit: `PENDING`

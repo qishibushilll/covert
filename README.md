@@ -76,3 +76,14 @@ spacing:
 
 The adaptive spacing is conservative: observed low room activity can increase
 the interval, but the sender will not go below `--min-sleep`.
+
+Optional style gate:
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 .\scripts\bilibili\send_browser_cdp.py --room 23087172 --message 'hi#' --replicas 1 --fillers 0 --online-style-learning --adaptive-sleep --style-gate --sleep 10 --min-sleep 10 --max-comments 30
+```
+
+The style gate is a conservative send/no-send check. It scores queued comments
+against passively collected room samples and can delay or stop a real send when
+the batch is far from the current room sample distribution. It does not generate
+or rewrite comments.
