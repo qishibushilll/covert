@@ -383,4 +383,4 @@ Outcome:
 - Browser-CDP send to room `23087172` completed `17/17` comments with `result={'ok': True}` and empty stderr.
 - Receiver collected `14/14` humanized payload comments, observed `fin`, and decoded successfully: `a`.
 
-Commit: pending
+Commit: `e9adb80`
