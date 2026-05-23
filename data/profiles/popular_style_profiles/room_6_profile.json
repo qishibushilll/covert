@@ -1,0 +1,31 @@
+{
+  "label": "room_6",
+  "rooms": [
+    6
+  ],
+  "sample_count": 2,
+  "length": {
+    "mean": 1.5,
+    "median": 1.5,
+    "min": 1,
+    "max": 2
+  },
+  "punctuation": {
+    "mean_count": 0,
+    "top_suffixes": []
+  },
+  "top_chars": [
+    [
+      "赛",
+      1
+    ],
+    [
+      "事",
+      1
+    ],
+    [
+      "啊",
+      1
+    ]
+  ]
+}

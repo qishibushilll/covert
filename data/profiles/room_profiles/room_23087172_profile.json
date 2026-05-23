@@ -1,0 +1,21 @@
+{
+  "room_display_id": 23087172,
+  "room_id": 23087172,
+  "sample_count": 0,
+  "length": {
+    "mean": 0,
+    "median": 0,
+    "min": 0,
+    "max": 0
+  },
+  "punctuation": {
+    "mean_count": 0,
+    "top_suffixes": []
+  },
+  "top_chars": [],
+  "bucket_sizes": {
+    "short": 0,
+    "medium": 0,
+    "long": 0
+  }
+}

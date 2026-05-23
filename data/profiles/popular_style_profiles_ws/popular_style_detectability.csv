@@ -1,0 +1,3 @@
+method,loaded_count,stream_count,loaded_len_mean,stream_len_mean,loaded_z_f1,stream_z_f1,stream_length_js,stream_punctuation_js,duplicate_rate
+fixed_templates,500,500,11.0260,8.7520,1.0000,0.8944,0.6935,0.5535,0.6260
+popular_style,500,500,10.6580,7.7980,1.0000,0.6667,0.1130,0.1914,0.6460

@@ -1,0 +1,178 @@
+A Multi Carrier Covert Communication Framework for Live Streaming Bullet Comments
+Liangliang Yin1, Xinhong Hei*1,2, Yichuan Wang1,2
+1
+School of Computer Science and Engineering, Xi’an University of Technology, Xi’an, China
+2
+Shaanxi Key Laboratory for Network Computing and Security Technology
+Email: chuan@xaut.edu.cn
+Abstract— Live streaming bullet comments are a type of public and real time text stream. They provide an open carrier for covert communication, while also introducing challenges such as text distortion, bullet comment loss, order perturbation and session synchronization difficulty. To address these issues, this paper proposes a multi carrier covert communication framework for live streaming bullet comments. A multi carrier strategy is designed to encapsulate secret message and a lightweight session advancement mechanism together with a post quantum resynchronization scheme is introduced to support continuous communication. Experimental results in both real live streaming environments and offline analysis show that the proposed method has strong resistance to interference and can achieve complete secret message transmission. Compared with existing related studies, the proposed system provides more reliable decoding performance.
+Index Terms-covert communication; live streaming bullet comments; multi carrier encoding; post quantum resynchronization; continuous communication
+Introduction
+Live streaming bullet comments are a type of public and real time text stream. They continuously appear on live streaming or video screens in the form of short texts and exhibit the characteristics of public visibility, limited length, frequent posting, strong interactivity and temporal continuity, which make them suitable for covert channels. As a form of user interactive content, live streaming bullet comments show diverse expressive styles and can therefore serve as carriers for secret message. Meanwhile, their large volume, high posting speed and dense temporal distribution provide room for covert transmission. However, live streaming bullet comments also have evident limitations. Individual comments may be affected by platform constraints, symbol cleaning, space compression, partial loss, order perturbation and incomplete monitoring[1][2][3].
+Existing research on covert communication in public environments mainly follows two approaches[1][2][4][5][6][7]. One approach constructs covert channels through time modulation, social behavior selection or posting order[1][2][6]. These methods can support secret message transmission on public platforms, but they usually depend heavily on time attributes or social behaviors, and their randomness may lead to transmission failure. The other approach realizes text steganography through natural language generation, text substitution or character level control[4][5]. These methods can change the surface form of language and reduce obvious anomalies, but their regular patterns still make them vulnerable to detection.
+To address the above issues, this paper proposes a multi carrier covert communication framework for live streaming bullet comments. The framework separates the protected payload layer from the natural language bullet comment layer. At the sender side, the plaintext is first normalized, compressed, bound to the session state, encrypted, authenticated and encapsulated with commitments, and is then combined with Reed-Solomon coding and Base64URL encoding to form a protected payload[8][9]. The payload is subsequently serialized into digital sequences, organized into unified protocol packets and mapped into three types of natural bullet comments, including symbol based, punctuation based and space based comments. At the receiver side, candidate bullet comments are selected from the public bullet comment stream, after which carrier identification, packet grouping, weighted voting and protected payload reconstruction are completed at the protocol layer, followed by final decoding and integrity verification.
+The main contributions of this paper are as follows.
+We design a multi carrier strategy that integrates symbol based, punctuation based and space based carriers. By introducing Reed-Solomon coding and replica redundancy, the proposed framework enhances recovery capability under local cleaning, partial loss and unstable carrier conditions.
+We propose a lightweight session advancement mechanism together with a periodic post quantum resynchronization mechanism. The former reduces the overhead of continuous communication by advancing the session with the existing session state and the latter provides periodic post quantum key support to enable session reconnection after message loss.
+Fig. 1. Network Structure of the Covert Communication Scenario in Live Streaming Bullet Comments
+Basis of the Framework
+Live Streaming Protocol and Bullet Comment Protocol
+Public communication in live streaming environments mainly consists of two parts: live content transmission and bullet comment interaction. Live content transmission relies on streaming protocols for uploading, transcoding, distribution and playback, and its primary task is to ensure that audio and video content can continuously reach viewers. Bullet comment interaction, by contrast, relies on the platform’s message transmission mechanism for reception, forwarding and display, and its primary task is to support real time interaction among viewers in the live room[1][2][3].
+In terms of data form, live streaming protocols handle continuous audio and video streams, whereas bullet comment protocols handle discrete text messages. The former emphasizes continuous transmission and real time playback, while the latter emphasizes message arrival, display synchronization and interactive response. Although the two types of protocols operate within the same live streaming platform environment, they differ in both processing objects and platform side priorities. Live content transmission focuses on the stable distribution of continuous media data and therefore pays more attention to stream continuity, delay control and playback consistency. Bullet comment interaction takes short text messages as the basic unit and places greater emphasis on message reception, display timing and interaction efficiency.
+Since bullet comments are part of the platform’s interaction mechanism, their entry into the live room, on screen overlay and rapid refresh all possess natural business legitimacy. This public, real time and high frequency form of text interaction gives live streaming bullet comment scenarios a more distinctive interactive character than ordinary static text platforms and also provides the application background for discussing covert transmission of secret information in live streaming bullet comment environments.
+Threat Model and Basic Requirements
+In live streaming bullet comment scenarios, external observers mainly include ordinary viewers and platform side detection mechanisms. Ordinary viewers can see both the live streaming content and the bullet comments, but they usually regard them only as general interactive messages. The platform, by contrast, can receive, forward, filter and review bullet comments. In addition, the public bullet comment stream itself is subject to uncertainties such as partial loss, order perturbation and incomplete observation[1][2].
+Beyond the external pressure brought by observers, the system must also operate under the usage constraints of a public scenario. The content of bullet comments cannot depart from the platform’s existing form of text interaction, and the sending behavior cannot deviate too obviously from the interaction rhythm of ordinary users. Otherwise, even if the messages can be delivered to the live room, abnormal appearance or abnormal behavior may still reduce the overall concealment of communication. Therefore, the relevant design must consider not only whether secret messages can be delivered, but also their naturalness in a public scenario, their robustness under local perturbations and their reliability in continuous communication.
+Based on the above scenario characteristics and constraint conditions, a secret message delivery mechanism in this environment needs to satisfy three basic requirements. First, it should rely on the existing bullet comment channel of the live streaming platform to carry information in a public environment. Second, it should maintain a certain level of recovery capability under local perturbations. Third, it should preserve communication correlation across successive rounds under continuous message conditions.
+Lightweight Session Advancement and Periodic PQ Resynchronization
+The proposed system supports not only single secret message transmission but also continuous message communication. In this setting, the successful recovery of subsequent messages depends not only on the integrity of the current payload but also on whether the sender and receiver maintain a consistent session state. To reduce the synchronization burden in continuous communication, this paper adopts a lightweight state advancement mechanism. The basic idea is that a complete session is not reestablished between ordinary messages. Instead, the existing session is continuously advanced, which keeps the additional overhead low. However, this continuous advancement mechanism also introduces a new problem. If one or several intermediate rounds of messages are entirely lost, the receiver may lose the session state required for subsequent rounds. Even if the protocol packets have been recovered, authentication may still fail. To solve this problem, a periodic post quantum resynchronization mechanism is further introduced. The basic idea is to periodically insert a resynchronization message carrying new post quantum key encapsulation material after several rounds of ordinary messages[10]. After receiving such a message, the receiver can recover a new shared secret and reestablish the root state required for the rounds after the current one. In this way, lightweight session state advancement maintains communication continuity, while periodic post quantum resynchronization provides reconnection capability after message loss.
+Evaluation Metrics
+The paper primarily adopts four types of metrics. First, the decoding success rate is defined as
+In this context,  represents the number of trials in which the original message is successfully recovered and  represents the total number of trials.
+Second, the average number of observed packets, the average number of recovered packets and the average number of missing packets are defined as follows:
+In this context, ,  and  represent the number of valid protocol packets observed, the number of protocol packets successfully recovered and the number of missing protocol packets in the -th trial, respectively. These metrics help analyze the system’s interference resilience and decoding capability.
+The Proposed Method
+Overall Workflow
+From an overall process perspective, the sender first normalizes, compresses, authenticates and encapsulates the user-input secret message to form the protected payload for the -th round of transmission. This payload is then converted into a unified digital sequence, which is organized into a set of protocol packets. The sender then maps these protocol packets into a sequence of natural bullet comments for public transmission. On the receiver side, the candidate bullet comment sequence, disturbed by the public channel, is received. The receiver must identify the recoverable protocol packets, reconstruct the protected payload, and perform decryption and integrity verification. Therefore, the system’s end-to-end state chain can be represented as follows:
+(1)
+Here, represents the user input secret message, represents the protected payload generated in the -th transmission round,  represents the digitized payload sequence,  represents the set of data packets and metadata packets constructed at the sender side and  represents the bullet comment sequence finally sent to the public live streaming room.  represents the candidate bullet comment sequence observed by the receiver, while  and  represent the reconstructed protocol packet set and the recovered protected payload at the receiver side, respectively.
+Fig. 2. Overall Workflow of the Proposed Covert Communication Framework
+Sender-Side
+The sender is responsible for completing the transformation from  to . Specifically, the secret message  is first processed through plaintext normalization, compression, session state binding, encryption and the encapsulation of authentication tags and commitment values to form a JSON string. Reed-Solomon coding and Base64URL encoding are then applied to this string, resulting in the protected payload .
+After the protected payload has been constructed, the system processes it byte by byte, rewrites each byte as a three-digit decimal string and finally concatenates these strings into the digital sequence .
+To allow different carriers to share the same encoding strategy, each packet code in the system is defined as
+(2)
+Here,  represents the type field,  represents the sequence field and  represents the payload field. In this way, the recovery target at the receiver side is transformed into a fixed length, digitized and verifiable unit structure. The protocol packet set of the -th message, denoted by , can be written as
+(3)
+Here,  denotes the data packet set and  denotes the metadata packet set. The former directly carries the digitized content of the protected payload, while the latter provides boundary information including the total number of packets, length, checksum and session hints.
+The sender then maps each protocol packet into a natural bullet comment. Three carrier types are adopted, denoted as symbol, punctuation and space, respectively. These three carriers share the same protocol packet structure and differ only in their public expression forms. For the -th replica of the protocol packet , the system can represent it as
+(4)
+Here,  represents the carrier mapping function and  represents the carrier type adopted by the current replica. In this way, the same protocol packet can be flexibly scheduled across different carriers, while different carriers still follow the same recovery criterion. Therefore, the multi carrier mechanism enables unified protocol packet recovery.
+To improve the recovery success rate, the system further introduces redundant replicas. Redundancy is applied at the level of individual protocol packets rather than the entire secret message. For each data packet and metadata packet, multiple replicas are generated according to the current carrier strategy and distributed across one or more carriers. In this way, the loss of a single bullet comment no longer directly leads to the permanent absence of a particular structural position, and the receiver can still recover valid information for that position from other replicas. Meanwhile, the sender inserts a small number of distracting bullet comments to reduce the density of consecutively loaded bullet comments, thereby forming the bullet comment sequence  to be sent.
+Receiver-Side
+The receiver is responsible for completing the transformation from  to . Specifically, it continuously monitors the public bullet comment stream in the live streaming room and filters out candidate bullet comments by identifying start markers, synchronization markers and valid bullet comments, thereby obtaining the candidate bullet comment sequence .
+From the candidate bullet comment sequence , the system extracts packet codes that can be parsed as protocol packets and then groups them according to their type and sequence index. The candidate set associated with the same structural position is denoted as
+(5)
+Here,  represents a candidate observation,  represents the field type and  represents the sequence index. Equation (5) shows that the receiver first parses candidate bullet comments into packet codes at the protocol layer and then groups them by the structural positions of protocol packets. In this way, multiple observations from different carriers or different replicas can be placed at the same recovery position.
+Since these candidates may come from different carriers and may also involve local conflicts, the receiver cannot rely on a single observation but must make an integrated decision at the same position. For this purpose, the system adopts a carrier weighted voting mechanism. Let  denote the carrier weight function. Then, the score of any candidate payload is defined as
+(6)
+Here,  represents the carrier type of candidate , represents the indicator function and  represents the payload associated with candidate . Within each cluster, the receiver selects the candidate with the highest score as the primary result and then reconstructs the protocol packet set  under the boundary constraints of the metadata.
+After clustering and selection are completed, the system reconstructs the current message in the order of metadata first and data packets second. If the recovered total packet number, length, session hints and CRC fail to match, the current round is regarded as unsuccessful. If these boundary conditions are satisfied, the system continues to reconstruct the protected payload .
+Finally, with the reconstructed protected payload as input, the receiver applies Base64URL decoding and Reed-Solomon error correction decoding to recover the JSON string, from which the session state, encryption nonce, resynchronization information and ciphertext field are obtained. It then combines the local session state to rederive the root state and authentication parameters required for the current round, and verifies the consistency of the authentication tag and commitment value. Only when this verification succeeds does the receiver decrypt and decompress the ciphertext, thereby finally recovering the secret message .
+Session Advancement and Periodic PQ Resynchronization
+To support continuous message communication, the system also needs to maintain the session state. The session state before the beginning of round is denoted as
+(7)
+Here,  represents the current session identifier,  represents the current working root state and  represents the current message counter. Both the sender and the receiver operate on the basis of this state, while maintaining the corresponding states of the same session at their respective sides. In this way, continuous messages in the system are no longer independent of one another, but are all bound to the same session state chain.
+For ordinary messages, the sender advances the session state with the commitment value of the current round after completing the encapsulation of the current message. Once the current message passes authentication, the receiver also advances its local state according to the same rule. The basic update relation can be written as
+(8)
+Here,   represents the commitment value generated in round  and  represents the derivation process. Equation (8) shows that the state advancement of ordinary messages depends on the current root state and the commitment value of the current round. The advantage of this design is that it is simple and introduces little additional overhead, which makes it suitable for continuous message communication within a short window.
+However, Equation (8) also indicates the boundary of the system. If one or several intermediate rounds of messages are entirely lost, the receiver cannot obtain the corresponding commitment values and therefore cannot continue advancing along the original state chain. To solve this problem, the system further introduces periodic resynchronization, with the message counter used to control its triggering time. Let denote the resynchronization interval. Then we have
+(9)
+When , the current message is regarded as a resynchronization message. When , the system continues to process it as an ordinary message. In this way, the triggering of resynchronization is controlled by the message counter.
+Once resynchronization is triggered, the sender includes new post quantum key encapsulation material in the message. Upon receiving this message, the receiver uses its local private key to recover a new shared secret and rederive the new epoch root state. The corresponding update relation can be written as
+(10)
+Here,  represents the shared secret recovered in the current resynchronization round and  represents the key derivation process. The significance of Equation (10) is that, once a resynchronization message is received, the receiver no longer relies entirely on the previous state chain with missing intermediate states, but can reestablish a consistent state on the basis of the new shared secret. In this way, the system supports lightweight continuous advancement for ordinary messages and periodic state reestablishment for resynchronization messages.
+Performance Evaluation and Analysis
+Experimental Setup
+To evaluate the practical performance of the proposed framework in a public channel, this paper carries out performance evaluation through offline lossy channel experiments and continuous session recovery experiments. The experiments mainly address the following questions: whether multi carrier protocol packet transmission can operate stably under the default lossy channel setting, how redundancy affects recovery capability and communication overhead and whether the system can reestablish session consistency through subsequent resynchronization messages once the state chain is broken during continuous message communication.
+The offline experiments adopt a public text layer perturbation model instead of directly simulating network layer packets. Let  denote the public bullet comment sequence generated in one message round and let  denote the candidate bullet comment sequence after passing through the public live streaming channel with perturbation. Then we have
+(11)
+Here,  denotes the loss probability of an entire bullet comment, ,  and denote the local damage probabilities of the symbol, punctuation and space carriers at the public text layer, respectively and  denotes the intensity of temporal perturbation. Under the current experimental setting, the default parameters are given as follows: 20 trials, redundancy , , , ,  and . These parameters serve as the unified baseline for the subsequent carrier comparison and redundancy analysis.
+In the cross-message experiments, the final recovered message, the success of the recovery and the total number of bullet comments are recorded to distinguish whether the failure results from insufficient protocol packet layer recovery or from authentication failure after the state chain is broken.
+Table 1. Parameters for Offline Lossy Channel Experiments
+Category
+Parameter
+Symbol
+Value
+Monte Carlo Trials
+Number of Trials
+20
+Redundancy
+Replicas per Packet
+3
+Packet Loss
+Loss Probability
+0.10
+Symbol Damage
+Symbol Damage Probability
+0.01
+Punctuation Damage
+Punctuation Damage Probability
+0.02
+Space Collapse
+Space Collapse Probability
+​
+0.05
+Reordering
+Reorder Jitter
+0.01
+Performance Comparison and Result Analysis
+This paper first verifies the correctness of the system's basic communication under undisturbed conditions. The results show that, under zero disturbance, the success rates of the symbol-only, punctuation-only, space-only and multimodal strategies are all 100.0%, with an average of 195.0 observed packets, 61.0 recovered packets and 0.0 missing packets. The experimental results indicate that the system can successfully complete the full process of encapsulation, packetization, mapping, recovery and decryption under ideal conditions and that differences in carriers do not interfere with the unified protocol packet structure.
+Table 2. Baseline Decoding Results with Zero Disturbance
+Carrier Strategy
+Succ(%)
+symbol-only
+100.0
+195.0
+61.0
+0.0
+punctuation-only
+100.0
+195.0
+61.0
+0.0
+space-only
+100.0
+195.0
+61.0
+0.0
+multimodal
+100.0
+195.0
+61.0
+0.0
+Under the default lossy channel setting, different carrier strategies can all operate stably. The experimental results show that the success rates of the symbol-only and punctuation-only strategies are both 100.0% and their average numbers of observed packets are both 178.0. The success rate of the space-only strategy is also 100.0%, with a slightly lower average number of observed packets of 176.8. The multimodal strategy likewise achieves a success rate of 100.0%, with an average number of observed packets of 177.6. For all four strategies, the average number of recovered packets is 61.0 and the average number of missing packets is 0.0. These results indicate that, under the default lossy channel parameters, the multi carrier mechanism enables public text scheduling under a unified protocol packet structure.
+Table 3. Recovery Results of Different Carrier Strategies in the Default Lossy Channel
+Carrier Strategy
+Succ(%)
+symbol-only
+100.0
+178.0
+61.0
+0.0
+punctuation-only
+100.0
+178.0
+61.0
+0.0
+space-only
+100.0
+176.8
+61.0
+0.0
+multimodal
+100.0
+177.6
+61.0
+0.0
+Compared with carrier strategies, redundancy has a more pronounced impact on system performance. When , all four strategies achieve a success rate of 75.0%, with an average of about 60.8 recovered packets and about 0.2 missing packets. When , the success rates of all four strategies increase to 100.0%, the average number of recovered packets rises to 61.0 and the average number of missing packets drops to 0.0. When , the success rate remains 100.0%, while the average number of observed packets further increases to about 233.3 to 236.7. If the relationship between success rate and redundancy is denoted by
+(12)
+Within the current experimental range, the change characterized by Equation (12) is especially evident when increases from 2 to 3. This indicates that  serves as the performance turning point in the current implementation. Although a further increase in redundancy does not degrade the recovery rate, it leads to a significant increase in communication overhead. Therefore, provides a relatively reasonable tradeoff between recovery capability and overhead in the current implementation.
+Fig. 3.  Effect of Redundancy on Recovery Performance
+The experiments under continuous message conditions further reveal the state boundary of the current system. The resynchronization interval experiments show that when the interval is 2, the system can recover the last message under complete round loss across messages, with the recovered result being msg_10 and the total number of bullet comments being 3683. When the interval is 4 or 8, recovery fails in both cases, and the detailed results indicate ciphertext authentication failure, with the corresponding total numbers of bullet comments being 1886 and 1001, respectively. These results indicate that the failure in the cross-message experiments does not arise from insufficient recovery at the protocol packet layer, but from the receiver’s inability to advance along the original state chain to the correct root state. Let the final recovery result be denoted as
+(13)
+Even if  is successfully reconstructed, Equation (13) may still fail if the local state  has not been consistently reestablished through subsequent resynchronization messages. This indicates that the resynchronization interval is a decisive factor for the reconnection of continuous sessions.
+Fig. 4. Impact of Rekey Interval on Cross-Message Recovery
+Conclusion
+This paper proposes and implements a multi carrier covert communication framework for live streaming bullet comments, which constitute a public and real time text stream. At the sender side, secret information is covertly transmitted through protected payload construction, digital serialization, unified protocol packetization and multi carrier mapping. At the receiver side, effective recovery of the secret information is achieved through candidate filtering, packet grouping, weighted voting, payload reconstruction and final decoding. Continuous communication is further maintained through lightweight session advancement and periodic post quantum resynchronization. Experimental results show that the proposed system can stably complete decoding for both single message transmission and short window continuous message communication, and that it exhibits good recovery capability under the default lossy channel setting. The results also indicate that system performance is mainly affected by redundancy configuration, and that a redundancy level of  3 provides a relatively reasonable balance between recovery success rate and communication overhead. Under complete round loss across messages, subsequent ordinary messages may fail authentication because of state chain interruption, while subsequent resynchronization messages can reestablish session consistency. Overall, the results demonstrate that live streaming bullet comments can serve as a public text carrier for covert communication and support a covert communication framework with feasibility, recoverability and verifiability through the joint design of a multi carrier strategy and periodic post quantum resynchronization.
+References
+C. Mao, Z. Li, and X. Luo, “A Covert Communication Method Adapted to Social Media Based on Time Modulation of Bullet Comments,” IEEE Transactions on Consumer Electronics, 2023, doi: 10.1109/TCE.2023.3277919.
+C. Mao, Z. Li, and X. Luo, “A Covert Communication Method Based on Time Attributes Shifting of Online Video Bullet Comment,” IEEE Transactions on Consumer Electronics, 2024, doi: 10.1109/TCE.2024.3439691.
+J. Zhou, Y. Ding, and H. Wang, “The Magic of Danmaku: A Social Interaction Perspective of Gift Sending on Live Streaming Platforms,” Electronic Commerce Research and Applications, vol. 34, p. 100815, 2019, doi: 10.1016/j.elerap.2018.11.002.
+A. Muñoz, I. Argüelles, and S. Sánchez-García, “A Formal Model for the Creation and Evaluation of Steganographic Solutions Based in Lexical-Semantic Substitutions,” Security and Communication Networks, vol. 7, no. 5, pp. 813–832, 2014, doi: 10.1002/sec.782.
+Y. Liu, C. Wang, J. Wang, B. Ou, and X. Liao, “Generative Steganography via Live Comments on Streaming Video Frames,” IEEE Transactions on Computational Social Systems, 2024, doi: 10.1109/TCSS.2024.3352979.
+M. Zhang, Z. Li, P. Zhang, Y. Zhang, and X. Luo, “A Novel High-Capacity Behavioral Steganographic Method Combining Timestamp Modulation and Carrier Selection Based on Social Networks,” Symmetry, vol. 14, no. 1, p. 111, 2022, doi: 10.3390/sym14010111.
+N. M. A. Khadse et al., “A Review on Network Covert Channel Construction and Attack Detection,” Concurrency and Computation: Practice and Experience, 2025, doi: 10.1002/cpe.8316.
+A. Houghton, “Reed-Solomon Codes,” in Error Coding for Engineers. Boston, MA, USA: Springer, 2001, doi: 10.1007/978-1-4615-1509-8_7.
+S. Josefsson, “The Base16, Base32, and Base64 Data Encodings,” RFC 4648, 2006, doi: 10.17487/RFC4648.
+NIST, Module-Lattice-Based Key-Encapsulation Mechanism Standard (FIPS 203), 2024, doi: 10.6028/NIST.FIPS.203.

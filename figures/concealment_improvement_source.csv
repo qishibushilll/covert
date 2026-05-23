@@ -1,0 +1,7 @@
+metric,metric_cn,legacy_mixed_suffix,humanized_phrase_carrier,reduction_percent,lower_is_better
+Fixed suffix rule F1,固定后缀规则检测F1,1.0000,0.0000,100.0,yes
+Loaded z-score F1,载荷弹幕统计检测F1,0.9970,0.6667,33.1,yes
+Stream length JS,流级长度分布差异JS,0.1244,0.0183,85.3,yes
+Loaded length mean,载荷弹幕平均长度,12.2260,8.5260,30.3,yes
+Carrier symbol mean,特殊符号载体均值,1.2100,0.0000,100.0,yes
+Carrier punctuation mean,载体标点均值,3.9880,0.9220,76.9,yes
