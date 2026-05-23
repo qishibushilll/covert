@@ -41,6 +41,13 @@ Install/update the editable package after structural changes:
 .\.venv\Scripts\python.exe -X utf8 .\experiments\detectability_baseline.py
 ```
 
+## Work Log
+
+For future Codex sessions, start from `docs/handoff/WORK_LOG.md`,
+`SESSION_HANDOFF.md`, and this README. Substantial changes should update the
+work log, then be committed and pushed to GitHub with a meaningful commit
+message.
+
 ## Minimal Authorized Bilibili Demo
 
 Receiver:
