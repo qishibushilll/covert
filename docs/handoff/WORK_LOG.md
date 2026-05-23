@@ -484,3 +484,80 @@ Result:
 - `preview_rebuilt` used current-room samples from the same run, including
   examples like `神人`, `贪吃`, `幻视AL打T1`, and `大树来抓一波就炸了`.
 - Port `9349` was free after the run.
+
+## Update: 2026-05-23 Live Chat Input Guard and Realtime Template Filtering
+
+Files changed:
+
+- `src/live_bullet_covert/browser_cdp.py`
+- `src/live_bullet_covert/sender.py`
+- `scripts/bilibili/send_browser_cdp.py`
+- `scripts/bilibili/probes/full_http_sender.py`
+- `tests/test_sender_payload_modes.py`
+- `README.md`
+- `docs/handoff/WORK_LOG.md`
+- `NEW_CHAT_HANDOFF_CN.md`
+- `SESSION_HANDOFF.md`
+
+Root cause of the latest failed room-6 test:
+
+- The sender log showed `input_candidates` contained only
+  `INPUT cls=nav-search-input`.
+- Browser sends reported `ok=True` because text was inserted into the top search
+  input, not the live chat input.
+- The receiver kept listening but could not decode because `CAL`, payload
+  comments, and `fin` never entered the public live chat.
+- The unnatural `preview_rebuilt` texts were caused by using too-short or
+  emoji-only realtime samples as wrappers, then appending/splitting a four-char
+  compact carrier record.
+
+Behavioral summary:
+
+- `browser_cdp.FIND_INPUT_JS` now marks candidates with `is_chat_input` and
+  `is_search`.
+- `browser_cdp.FOCUS_INPUT_JS` only focuses recognized live-chat inputs and no
+  longer falls back to arbitrary text inputs.
+- `send_browser_cdp.py` refuses `--send` if no visible live-chat input is found.
+- Realtime template rebuilds now filter samples before use. Very short,
+  emoji-only, duplicate, and punctuation-heavy comments are rejected.
+- If too few usable realtime samples remain, real sends stop instead of falling
+  back to an unnatural template-payload preview.
+- Compact payload generation now prefers longer wrappers, spreads carrier
+  punctuation internally, and rejects payloads with a trailing carrier cluster.
+
+Validation:
+
+```powershell
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 -m py_compile '.\src\live_bullet_covert\browser_cdp.py' '.\src\live_bullet_covert\sender.py' '.\scripts\bilibili\send_browser_cdp.py' '.\scripts\bilibili\probes\full_http_sender.py' '.\tests\test_sender_payload_modes.py'
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\tests\test_sender_payload_modes.py'
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\tests\offline_baseline_test.py'
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\tests\test_online_style.py'
+```
+
+Result: passed.
+
+Room-6 dry-run verification, no send:
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 .\scripts\bilibili\send_browser_cdp.py --room 6 --online-style-source-room 6 --message 'a#' --replicas 1 --fillers 0 --realtime-online-style --realtime-template-payloads --realtime-template-min-samples 4 --realtime-template-wait 10 --realtime-online-style-seconds 30 --online-style-target 20 --online-style-min-samples 999 --adaptive-sleep --sleep 10 --min-sleep 10 --page-wait 5 --warmup-count 1 --max-comments 30 --port 9353 --user-data-dir 'local_secrets\chrome_profiles\chrome_cdp_profile_room6_guard_dryrun'
+```
+
+Observed result:
+
+- `input_candidates` showed only `nav-search-input` with
+  `is_chat_input=False` and `is_search=True`.
+- The realtime run collected raw samples but had `0` usable long wrappers after
+  filtering in that short window.
+- Because the run was a dry run, it printed
+  `realtime usable template samples insufficient after filtering` and did not
+  send.
+- With `--send`, the same visible-input state would stop before sending.
+
+Important local state:
+
+- `src/live_bullet_covert/send_policy.py` may contain a user-local
+  `DEFAULT_AUTHORIZED_ROOM_ID = 6` change. Do not commit or overwrite that
+  unless the user explicitly asks.
+- Run-generated files under
+  `data/profiles/online_style_profiles/room_6_*` are still local data changes
+  and should not be mixed into code commits.

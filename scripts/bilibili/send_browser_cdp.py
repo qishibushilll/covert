@@ -72,6 +72,7 @@ def rebuild_messages_from_realtime_templates(args, monitor, actual_room_id):
         timeout=args.realtime_template_wait,
     )
     comments = snapshot.get("comments") or []
+    usable_comments = sender.filter_room_wrapper_candidates(comments)
     if len(comments) < args.realtime_template_min_samples:
         message = (
             "[online-style-rt] realtime template samples insufficient: "
@@ -81,14 +82,24 @@ def rebuild_messages_from_realtime_templates(args, monitor, actual_room_id):
             raise SystemExit(f"{message}; stopping real send")
         print(f"{message}; keeping initial payload preview", flush=True)
         return None
+    if len(usable_comments) < args.realtime_template_min_samples:
+        message = (
+            "[online-style-rt] realtime usable template samples insufficient after filtering: "
+            f"{len(usable_comments)}/{args.realtime_template_min_samples} "
+            f"(raw={len(comments)})"
+        )
+        if args.send:
+            raise SystemExit(f"{message}; stopping real send")
+        print(f"{message}; keeping initial payload preview", flush=True)
+        return None
 
     print(
         "[online-style-rt] rebuilding payloads from realtime templates: "
-        f"samples={len(comments)}",
+        f"samples={len(usable_comments)} raw_samples={len(comments)}",
         flush=True,
     )
     args.template_payloads = True
-    _, core, payloads, messages = build_messages(args, realtime_comments=comments)
+    _, core, payloads, messages = build_messages(args, realtime_comments=usable_comments)
     return actual_room_id, core, payloads, messages, snapshot
 
 
@@ -193,6 +204,11 @@ def realtime_snapshot(monitor):
         flush=True,
     )
     return snapshot
+
+
+def has_live_chat_input(candidates_result):
+    candidates = candidates_result.get("result", {}).get("value") or []
+    return any(candidate.get("is_chat_input") for candidate in candidates)
 
 
 def current_send_sleep(args, style_learning, realtime_monitor, base_send_sleep):
@@ -456,6 +472,10 @@ def main():
         time.sleep(args.page_wait)
         candidates = cdp.eval(browser_cdp.FIND_INPUT_JS)
         print(f"[browser] input_candidates={candidates.get('result', {}).get('value')}")
+        if args.send and not has_live_chat_input(candidates):
+            raise SystemExit(
+                "live chat input not found; refusing to send because only non-chat inputs are visible"
+            )
         if realtime_monitor is not None and args.realtime_template_payloads:
             rebuilt = rebuild_messages_from_realtime_templates(args, realtime_monitor, actual_room_id)
             if rebuilt is not None:

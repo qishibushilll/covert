@@ -106,6 +106,17 @@ the payload queue after the page wait and prints `preview_rebuilt`. Real sends
 with realtime template payloads are allowed only when the realtime source room
 matches `--room`.
 
+Realtime template payloads are filtered before use. Very short comments,
+emoji-only comments, and samples dominated by carrier punctuation are rejected,
+so the sender does not build payloads like a short phrase followed by four
+symbols. If too few usable realtime samples remain, real sends stop instead of
+silently falling back to an unnatural preview.
+
+The browser sender also refuses real sends unless a visible live-chat input is
+found. If `input_candidates` only contains a search box such as
+`nav-search-input`, the run stops before sending because those messages would
+not enter the live room and the receiver would keep listening without decoding.
+
 Payload comments use the built-in humanized codebook by default. To explicitly
 wrap compact carrier records in a learned template file during a dry run or an
 authorized same-room test, add `--template-payloads --style-file <path>`.

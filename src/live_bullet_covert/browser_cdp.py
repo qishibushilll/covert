@@ -231,6 +231,29 @@ FIND_INPUT_JS = r"""
     const s = getComputedStyle(el);
     return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none';
   };
+  const textOf = (el) => [
+    el.tagName,
+    el.id || '',
+    el.className || '',
+    el.getAttribute('placeholder') || '',
+    el.getAttribute('aria-label') || ''
+  ].join(' ').toLowerCase();
+  const isSearch = (el) => {
+    const text = textOf(el);
+    return text.includes('search') || text.includes('nav-search') || text.includes('搜索');
+  };
+  const isChatInput = (el) => {
+    if (isSearch(el)) return false;
+    const text = textOf(el);
+    return (
+      text.includes('chat-input') ||
+      text.includes('danmaku') ||
+      text.includes('comment') ||
+      text.includes('弹幕') ||
+      text.includes('发个') ||
+      text.includes('聊天')
+    );
+  };
   const candidates = [
     ...document.querySelectorAll('textarea'),
     ...document.querySelectorAll('input[type="text"]'),
@@ -243,6 +266,8 @@ FIND_INPUT_JS = r"""
     cls: String(el.className || ''),
     id: String(el.id || ''),
     placeholder: String(el.getAttribute('placeholder') || ''),
+    is_chat_input: isChatInput(el),
+    is_search: isSearch(el),
     text: String(el.innerText || el.value || '').slice(0, 40)
   }));
 })()
@@ -256,22 +281,66 @@ FOCUS_INPUT_JS = r"""
     const s = getComputedStyle(el);
     return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none';
   };
+  const textOf = (el) => [
+    el.tagName,
+    el.id || '',
+    el.className || '',
+    el.getAttribute('placeholder') || '',
+    el.getAttribute('aria-label') || ''
+  ].join(' ').toLowerCase();
+  const isSearch = (el) => {
+    const text = textOf(el);
+    return text.includes('search') || text.includes('nav-search') || text.includes('搜索');
+  };
+  const isChatInput = (el) => {
+    if (isSearch(el)) return false;
+    const text = textOf(el);
+    return (
+      text.includes('chat-input') ||
+      text.includes('danmaku') ||
+      text.includes('comment') ||
+      text.includes('弹幕') ||
+      text.includes('发个') ||
+      text.includes('聊天')
+    );
+  };
   const selectors = [
+    'textarea.chat-input',
+    'textarea[class*="chat-input"]',
+    'textarea[class*="chat"]',
+    'textarea[class*="danmaku"]',
+    'textarea[class*="comment"]',
     'textarea[placeholder*="弹幕"]',
-    'textarea',
-    '[contenteditable="true"]',
-    '[contenteditable="plaintext-only"]',
-    'input[type="text"]'
+    'textarea[placeholder*="发个"]',
+    'input[type="text"][class*="chat"]',
+    'input[type="text"][class*="danmaku"]',
+    'input[type="text"][class*="comment"]',
+    'input[type="text"][placeholder*="弹幕"]',
+    'input[type="text"][placeholder*="发个"]',
+    '[contenteditable="true"][class*="chat"]',
+    '[contenteditable="true"][class*="danmaku"]',
+    '[contenteditable="true"][class*="comment"]',
+    '[contenteditable="plaintext-only"][class*="chat"]',
+    '[contenteditable="plaintext-only"][class*="danmaku"]',
+    '[contenteditable="plaintext-only"][class*="comment"]'
   ];
   for (const selector of selectors) {
     for (const el of document.querySelectorAll(selector)) {
       if (!visible(el)) continue;
+      if (!isChatInput(el)) continue;
       el.scrollIntoView({block: 'center'});
       el.focus();
-      return {ok: true, tag: el.tagName, cls: String(el.className || ''), placeholder: String(el.getAttribute('placeholder') || '')};
+      return {
+        ok: true,
+        tag: el.tagName,
+        cls: String(el.className || ''),
+        id: String(el.id || ''),
+        placeholder: String(el.getAttribute('placeholder') || ''),
+        is_chat_input: true
+      };
     }
   }
-  return {ok: false, candidates: (%s)};
+  return {ok: false, reason: 'live_chat_input_not_found', candidates: (%s)};
 })()
 """ % FIND_INPUT_JS
 
@@ -285,6 +354,8 @@ def send_comment(cdp, message):
     focus_value = focus.get("result", {}).get("value")
     if not focus_value or not focus_value.get("ok"):
         return {"ok": False, "reason": "input_not_found", "focus": focus_value}
+    if not focus_value.get("is_chat_input"):
+        return {"ok": False, "reason": "focused_non_chat_input", "focus": focus_value}
 
     cdp.eval(
         r"""

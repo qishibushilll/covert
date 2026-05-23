@@ -592,3 +592,34 @@ data/profiles/online_style_profiles/room_6_templates.txt
 
 Do not mix those run-generated profile changes into unrelated feature commits.
 If they are needed as updated samples, review and commit them separately.
+
+## 2026-05-23 room-6 failure diagnosis and guard update
+
+The latest user-run room-6 attempt exposed two separate bugs:
+
+- Sender input targeting was wrong. The log showed
+  `input_candidates=[{'tag': 'INPUT', 'cls': 'nav-search-input', ...}]`, and
+  each `browser_send` focused that same `nav-search-input`. Those messages went
+  to the page search box, not the live chat input, so the receiver kept
+  listening without seeing a decodable `CAL`/payload/`fin` sequence.
+- Realtime template payloads accepted too-short wrappers such as `😧` or `宫中`,
+  so compact carrier records appeared as short text followed by clustered
+  punctuation. That was not natural room style.
+
+Current fix:
+
+- `browser_cdp.py` marks candidates as `is_chat_input` and `is_search`.
+- The browser sender refuses `--send` when no visible live-chat input is found.
+- Realtime template rebuilds now filter unusable wrappers before building
+  payloads and stop real sends if too few usable samples remain.
+- Compact payload generation prefers longer wrappers and rejects trailing
+  compact-carrier clusters.
+
+Validated with py_compile, sender payload tests, offline baseline, and
+`test_online_style.py`. A room-6 dry run with no `--send` confirmed that a page
+showing only `nav-search-input` is identified as non-chat and that insufficient
+usable realtime wrappers do not produce a rebuilt payload preview.
+
+Local-state warning: the user's `src/live_bullet_covert/send_policy.py` change
+to `DEFAULT_AUTHORIZED_ROOM_ID = 6` is not part of this fix and should not be
+committed unless explicitly requested.

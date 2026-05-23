@@ -190,6 +190,7 @@ def rebuild_messages_from_realtime_templates(args, monitor, sender):
         timeout=args.realtime_template_wait,
     )
     comments = snapshot.get("comments") or []
+    usable_comments = sender.filter_room_wrapper_candidates(comments)
     if len(comments) < args.realtime_template_min_samples:
         message = (
             "[online-style-rt] realtime template samples insufficient: "
@@ -199,16 +200,26 @@ def rebuild_messages_from_realtime_templates(args, monitor, sender):
             raise SystemExit(f"{message}; stopping real send")
         print(f"{message}; keeping initial payload preview", flush=True)
         return None
+    if len(usable_comments) < args.realtime_template_min_samples:
+        message = (
+            "[online-style-rt] realtime usable template samples insufficient after filtering: "
+            f"{len(usable_comments)}/{args.realtime_template_min_samples} "
+            f"(raw={len(comments)})"
+        )
+        if args.send:
+            raise SystemExit(f"{message}; stopping real send")
+        print(f"{message}; keeping initial payload preview", flush=True)
+        return None
 
     print(
         "[online-style-rt] rebuilding payloads from realtime templates: "
-        f"samples={len(comments)}",
+        f"samples={len(usable_comments)} raw_samples={len(comments)}",
         flush=True,
     )
     args.template_payloads = True
     sender.HUMANIZED_CARRIER_ENABLED = False
     random.seed(20260513)
-    core = sender.CovLBCG_Core(room_comments=comments)
+    core = sender.CovLBCG_Core(room_comments=usable_comments)
     payloads = core.gen_payloads(args.message)
     messages = [sender.JOIN_COMMAND, sender.SYNC_COMMAND]
     messages.extend(payload["c"] for payload in payloads)

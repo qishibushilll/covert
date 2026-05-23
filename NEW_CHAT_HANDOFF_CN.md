@@ -738,3 +738,35 @@ data/profiles/online_style_profiles/room_6_templates.txt
 ```
 
 这些 `room_6_*` 是实时学习运行产生的数据变更，不属于 `4c3e13b` 的功能提交。下一轮如果需要保留最新样本，可以单独审阅后提交；如果只做代码开发，不要误把它们混进功能提交。
+
+## 2026-05-23 room 6 失败原因与最新保护
+
+用户这次指出的两个问题都成立：
+
+1. 接收端一直监听但不解码，是因为发送端实际没有把内容发进直播间。日志里的 `input_candidates` 只有 `nav-search-input`，后续每条 `browser_send` 聚焦的也是这个页面顶部搜索框，所以 `CAL`、payload 和 `fin` 没有进入公开弹幕流。
+2. `preview_rebuilt` 里出现“短句/表情 + 四个符号”，是因为实时样本里有 `😧`、`宫中` 这类太短的 wrapper，compact 载体被硬塞进去后自然度很差。
+
+已修复：
+
+- `src/live_bullet_covert/browser_cdp.py` 会给输入候选标记 `is_chat_input` 和 `is_search`。
+- `scripts/bilibili/send_browser_cdp.py` 在真实发送前，如果没有可见直播弹幕输入框，会直接拒绝 `--send`，不再退化到搜索框或任意输入框。
+- `src/live_bullet_covert/sender.py` 增加实时 wrapper 过滤：拒绝过短、纯表情、重复、标点/载体密度过高的样本。
+- `--realtime-template-payloads` 重建时先过滤样本；真实发送时可用样本不足会停止，不会默默回退到不自然模板。
+- compact payload 现在偏向更长 wrapper，并避免尾部连续载体符号簇。
+
+已验证：
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 -m py_compile .\src\live_bullet_covert\browser_cdp.py .\src\live_bullet_covert\sender.py .\scripts\bilibili\send_browser_cdp.py .\scripts\bilibili\probes\full_http_sender.py .\tests\test_sender_payload_modes.py
+.\.venv\Scripts\python.exe -X utf8 .\tests\test_sender_payload_modes.py
+.\.venv\Scripts\python.exe -X utf8 .\tests\offline_baseline_test.py
+.\.venv\Scripts\python.exe -X utf8 .\tests\test_online_style.py
+```
+
+room 6 dry-run 无发送验证结果：
+
+- 只看到 `nav-search-input` 时会识别为 `is_chat_input=False, is_search=True`。
+- 短时间采到的原始实时样本如果过滤后可用长 wrapper 不足，会打印 `realtime usable template samples insufficient after filtering`，不会生成不自然的 `preview_rebuilt`。
+- 如果带 `--send` 遇到同样页面状态，会在发送前停止。
+
+注意：`src/live_bullet_covert/send_policy.py` 里用户本地可能把 `DEFAULT_AUTHORIZED_ROOM_ID` 改成了 `6`。这不是本次修复的一部分，不要误提交或覆盖，除非用户明确要求。

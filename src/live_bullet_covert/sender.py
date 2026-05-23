@@ -88,6 +88,7 @@ HUMANIZED_CARRIER_ENABLED = os.environ.get("COVLBCG_HUMANIZED_CARRIER", "1") != 
 COMPACT_CARRIER_ALPHABET = "，。！？；：、～…—,."
 COMPACT_RECORD_SIZE = 4
 COMPACT_RECORD_SPACE = 100 * 2 * 100
+MIN_ROOM_WRAPPER_LEN = 16
 _ROOM_COMMENT_CACHE = None
 _ROOM_COMMENT_CACHE_PATH = None
 
@@ -198,6 +199,65 @@ def strip_carrier_chars(text):
 
 ALL_CARRIER_CHARS = set(SYMBOL_MAP.values()) | set(PUNCTUATION_MAP.values()) | set(COMPACT_CARRIER_ALPHABET)
 
+
+def visible_text_len(text):
+    return sum(1 for char in str(text) if char not in ALL_CARRIER_CHARS and not char.isspace())
+
+
+def is_room_wrapper_candidate(text, min_len=MIN_ROOM_WRAPPER_LEN):
+    clean = strip_carrier_chars(normalize_room_comment(text))
+    if visible_text_len(clean) < min_len:
+        return False
+    if not re.search(r"[\u4e00-\u9fffA-Za-z0-9]", clean):
+        return False
+    carrier_count = sum(1 for char in str(text) if char in COMPACT_CARRIER_ALPHABET)
+    if carrier_count > max(2, len(clean) // 3):
+        return False
+    return True
+
+
+def filter_room_wrapper_candidates(comments, min_len=MIN_ROOM_WRAPPER_LEN):
+    filtered = []
+    seen = set()
+    for item in comments or []:
+        clean = normalize_room_comment(item)
+        if not is_room_wrapper_candidate(clean, min_len=min_len):
+            continue
+        stripped = strip_carrier_chars(clean)
+        if visible_text_len(stripped) < min_len:
+            continue
+        if stripped in seen:
+            continue
+        seen.add(stripped)
+        filtered.append(clean)
+    return filtered
+
+
+def compact_carrier_count(text):
+    return sum(1 for char in str(text) if char in COMPACT_CARRIER_ALPHABET)
+
+
+def trailing_compact_carrier_count(text):
+    count = 0
+    for char in reversed(str(text)):
+        if char in COMPACT_CARRIER_ALPHABET:
+            count += 1
+        else:
+            break
+    return count
+
+
+def compact_payload_natural_enough(text, carrier_len=COMPACT_RECORD_SIZE):
+    visible_len = visible_text_len(text)
+    carrier_count = compact_carrier_count(text)
+    if visible_len < max(MIN_ROOM_WRAPPER_LEN, carrier_len * 4):
+        return False
+    if carrier_count > max(carrier_len, visible_len // 4):
+        return False
+    if trailing_compact_carrier_count(text) >= 3:
+        return False
+    return True
+
 SEMANTIC_BOUNDARY_CHARS = set("吗呢啊吧呀哦啦了哈嘛呗哇")
 SEMANTIC_BOUNDARY_WORDS = [
     "为啥", "什么", "怎么", "不会", "可以", "离谱", "活动", "观察",
@@ -230,7 +290,10 @@ HUMAN_VALUE_OFFSET = 7919
 
 def prepare_room_wrapper(text):
     """保留房间弹幕原有标点和语气，只做基础清洗。"""
-    return normalize_room_comment(text)
+    clean = normalize_room_comment(text)
+    if not is_room_wrapper_candidate(clean):
+        return ""
+    return clean
 
 
 class PostQuantumEncryption:
@@ -554,6 +617,24 @@ class CovLBCG_Core:
             return ordered
 
         positions = ordered[:]
+        if len(wrapper) >= carrier_count + 4:
+            low = 2
+            high = len(wrapper) - 1
+            spread = {
+                max(low, min(high, round((index + 1) * len(wrapper) / (carrier_count + 1))))
+                for index in range(carrier_count)
+            }
+            for pos in sorted(spread):
+                if len(positions) >= carrier_count:
+                    break
+                if pos in positions:
+                    continue
+                positions.append(pos)
+            available = [pos for pos in range(low, high + 1) if pos not in positions]
+            while len(positions) < carrier_count and available:
+                choice = random.choice(available)
+                positions.append(choice)
+                available.remove(choice)
         while len(positions) < carrier_count:
             positions.append(len(wrapper))
         return sorted(positions)
@@ -561,7 +642,7 @@ class CovLBCG_Core:
     def embed_compact_carrier(self, wrapper, carrier_code):
         """把紧凑载体分散进文本内部，避免固定尾部连续载体模式。"""
         wrapper = strip_carrier_chars(wrapper) or "主播加油"
-        max_wrapper_len = max(1, MAX_COMMENT_LENGTH - len(carrier_code))
+        max_wrapper_len = max(MIN_ROOM_WRAPPER_LEN, MAX_COMMENT_LENGTH - len(carrier_code))
         wrapper = wrapper[:max_wrapper_len]
         if not wrapper:
             return carrier_code
@@ -590,28 +671,32 @@ class CovLBCG_Core:
 
     def choose_payload_wrapper(self, carrier_len):
         """优先从直播间历史弹幕中选择长度匹配的自然外壳。"""
-        max_wrapper_len = max(2, MAX_COMMENT_LENGTH - carrier_len)
+        max_wrapper_len = max(MIN_ROOM_WRAPPER_LEN, MAX_COMMENT_LENGTH - carrier_len)
         if not self.room_comments:
             template = random.choice(CARRIER_TEMPLATES)
             suffix = random.choice(PAYLOAD_SUFFIXES)
             return template.format(suffix)[:max_wrapper_len]
 
         # 让“外壳 + 载体码”的长度贴近当前房间弹幕长度中位附近。
-        lengths = sorted(min(len(comment), MAX_COMMENT_LENGTH) for comment in self.room_comments)
+        candidate_comments = filter_room_wrapper_candidates(self.room_comments)
+        if not candidate_comments:
+            return random.choice(CARRIER_TEMPLATES).format(random.choice(PAYLOAD_SUFFIXES))[:max_wrapper_len]
+
+        lengths = sorted(min(len(comment), MAX_COMMENT_LENGTH) for comment in candidate_comments)
         target_total_len = lengths[len(lengths) // 2]
-        target_wrapper_len = min(max_wrapper_len, max(2, target_total_len - carrier_len))
+        target_wrapper_len = min(max_wrapper_len, max(MIN_ROOM_WRAPPER_LEN, target_total_len - carrier_len))
 
         scored = []
-        for comment in self.room_comments:
-            clean = prepare_room_wrapper(comment)
-            if not clean:
-                continue
+        for clean in candidate_comments:
             if len(clean) > max_wrapper_len:
                 clean = clean[:max_wrapper_len]
+            if visible_text_len(clean) < MIN_ROOM_WRAPPER_LEN:
+                continue
             score = abs(len(clean) - target_wrapper_len)
             if COMPACT_EMBEDDING_ENABLED and SEMANTIC_EMBEDDING_ENABLED:
                 natural_slots = len(self.semantic_carrier_positions(clean, carrier_len, allow_fallback=False))
                 score += max(0, 2 - natural_slots) * 0.75
+            score -= min(8, visible_text_len(clean) / 8)
             scored.append((score, random.random(), clean))
 
         if not scored:
@@ -634,8 +719,14 @@ class CovLBCG_Core:
         if COMPACT_EMBEDDING_ENABLED:
             carrier_code, carrier = self.encode_fragment_compact(code)
             wrapper = self.choose_payload_wrapper(len(carrier_code))
+            content = self.embed_compact_carrier(wrapper, carrier_code)
+            for _ in range(8):
+                if compact_payload_natural_enough(content, len(carrier_code)):
+                    break
+                wrapper = self.choose_payload_wrapper(len(carrier_code))
+                content = self.embed_compact_carrier(wrapper, carrier_code)
             return {
-                "c": self.embed_compact_carrier(wrapper, carrier_code),
+                "c": content,
                 "d": TIME_OFFSET,
                 "code": code,
                 "carrier": carrier,
