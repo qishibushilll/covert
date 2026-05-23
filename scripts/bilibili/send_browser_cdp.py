@@ -23,6 +23,9 @@ def build_messages(args):
     sender.TARGET_ROOM_ID = args.room
     sender.FRAGMENT_REPLICAS = args.replicas
     sender.FILLERS_PER_PAYLOAD = args.fillers
+    sender.HUMANIZED_CARRIER_ENABLED = not args.template_payloads
+    sender.COMPACT_EMBEDDING_ENABLED = True
+    sender.SEMANTIC_EMBEDDING_ENABLED = True
 
     if args.fixed_templates:
         sender.ROOM_COMMENTS_FILE = "__covlbcg_no_room_comments__.txt"
@@ -33,6 +36,15 @@ def build_messages(args):
         sender._ROOM_COMMENT_CACHE = None
         sender._ROOM_COMMENT_CACHE_PATH = None
 
+    try:
+        online_style.validate_style_file_for_send(
+            send_room_display_id=args.room,
+            style_file=sender.ROOM_COMMENTS_FILE,
+            send=args.send,
+        )
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+
     random.seed(20260519)
     core = sender.CovLBCG_Core()
     payloads = core.gen_payloads(args.message)
@@ -41,6 +53,19 @@ def build_messages(args):
     messages.extend(payload["c"] for payload in payloads)
     messages.append("fin")
     return actual_room_id, core, payloads, messages
+
+
+def validate_explicit_style_file_for_send(args):
+    if args.fixed_templates or not args.style_file:
+        return
+    try:
+        online_style.validate_style_file_for_send(
+            send_room_display_id=args.room,
+            style_file=args.style_file,
+            send=args.send,
+        )
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
 
 
 def apply_online_style_if_requested(args):
@@ -88,6 +113,11 @@ def main():
     parser.add_argument("--fillers", type=int, default=2)
     parser.add_argument("--fixed-templates", action="store_true")
     parser.add_argument("--style-file")
+    parser.add_argument(
+        "--template-payloads",
+        action="store_true",
+        help="Use learned room templates as payload wrappers instead of the fixed humanized codebook.",
+    )
     parser.add_argument("--sleep", type=float, default=send_policy.DEFAULT_MIN_SEND_SLEEP)
     parser.add_argument("--min-sleep", type=float, default=send_policy.DEFAULT_MIN_SEND_SLEEP)
     parser.add_argument("--page-wait", type=float, default=25.0)
@@ -141,6 +171,7 @@ def main():
         confirm_authorized=args.confirm_authorized,
         authorized_rooms_text=args.authorized_rooms,
     )
+    validate_explicit_style_file_for_send(args)
     style_learning = apply_online_style_if_requested(args)
     actual_room_id, core, payloads, messages = build_messages(args)
     activity = (style_learning or {}).get("activity", {})
@@ -208,6 +239,7 @@ def main():
     print(f"replicas={args.replicas}")
     print(f"fillers={args.fillers}")
     print(f"fixed_templates={bool(args.fixed_templates)}")
+    print(f"template_payloads={bool(args.template_payloads)}")
     print(f"room_comments_enabled={bool(core.room_comments)} count={len(core.room_comments)}")
     print(f"payload_count={len(payloads)}")
     print(f"total_comments_with_markers={len(messages)}")

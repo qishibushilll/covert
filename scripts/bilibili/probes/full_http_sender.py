@@ -105,6 +105,19 @@ def apply_online_style_if_requested(args):
     return result
 
 
+def validate_explicit_style_file_for_send(args):
+    if args.fixed_templates or not args.style_file:
+        return
+    try:
+        online_style.validate_style_file_for_send(
+            send_room_display_id=args.room,
+            style_file=args.style_file,
+            send=args.send,
+        )
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+
+
 def main():
     parser = argparse.ArgumentParser(description="Full CovLBCG HTTP sender for authorized Bilibili live-room tests.")
     parser.add_argument("--room", type=int, default=send_policy.DEFAULT_AUTHORIZED_ROOM_ID)
@@ -118,6 +131,11 @@ def main():
     parser.add_argument("--max-comments", type=int, default=send_policy.DEFAULT_SEND_MAX_COMMENTS)
     parser.add_argument("--style-file", help="Use a learned template file instead of the default room_comments.txt.")
     parser.add_argument("--fixed-templates", action="store_true", help="Ignore room_comments.txt and use built-in fixed templates.")
+    parser.add_argument(
+        "--template-payloads",
+        action="store_true",
+        help="Use learned room templates as payload wrappers instead of the fixed humanized codebook.",
+    )
     parser.add_argument("--learn-style", action="store_true", help="Learn the target room style before generating payloads.")
     parser.add_argument("--learn-target-count", type=int, default=80)
     parser.add_argument("--learn-rounds", type=int, default=12)
@@ -178,11 +196,15 @@ def main():
         confirm_authorized=args.confirm_authorized,
         authorized_rooms_text=args.authorized_rooms,
     )
+    validate_explicit_style_file_for_send(args)
     style_learning = apply_online_style_if_requested(args)
     actual_room_id = room_style.room_init(args.room)
     sender.TARGET_ROOM_ID = args.room
     sender.FRAGMENT_REPLICAS = args.replicas
     sender.FILLERS_PER_PAYLOAD = args.fillers
+    sender.HUMANIZED_CARRIER_ENABLED = not args.template_payloads
+    sender.COMPACT_EMBEDDING_ENABLED = True
+    sender.SEMANTIC_EMBEDDING_ENABLED = True
     learned_style = None
 
     if args.learn_style:
@@ -206,6 +228,15 @@ def main():
         sender.ROOM_COMMENTS_FILE = args.style_file
         sender._ROOM_COMMENT_CACHE = None
         sender._ROOM_COMMENT_CACHE_PATH = None
+
+    try:
+        online_style.validate_style_file_for_send(
+            send_room_display_id=args.room,
+            style_file=sender.ROOM_COMMENTS_FILE,
+            send=args.send,
+        )
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
 
     core = sender.CovLBCG_Core()
     payloads = core.gen_payloads(args.message)
@@ -284,6 +315,7 @@ def main():
         print("fixed_templates=1")
     elif args.style_file:
         print(f"style_file={Path(args.style_file).resolve()}")
+    print(f"template_payloads={bool(args.template_payloads)}")
     print(f"room_comments_enabled={bool(core.room_comments)} count={len(core.room_comments)}")
     print(f"payload_count={len(payloads)}")
     print(f"total_comments_with_markers={len(messages)}")

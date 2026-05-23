@@ -1,4 +1,5 @@
 import time
+import re
 from pathlib import Path
 
 from live_bullet_covert import bilibili_ws
@@ -13,6 +14,7 @@ DEFAULT_ACTIVITY_QUIET_CPM = 5.0
 DEFAULT_ACTIVITY_NORMAL_CPM = 20.0
 DEFAULT_ACTIVITY_QUIET_MULTIPLIER = 3.0
 DEFAULT_ACTIVITY_MODERATE_MULTIPLIER = 1.5
+ROOM_STYLE_FILE_RE = re.compile(r"(?:^|[\\/])room_(\d+)_(?:comments|templates|profile)\.")
 
 
 def resolve_source_room(send_room_display_id, source_room_display_id=None):
@@ -27,6 +29,26 @@ def is_same_room(left_room_display_id, right_room_display_id):
 
 def should_apply_learned_templates(send_room_display_id, source_room_display_id, templates_path):
     return bool(templates_path) and is_same_room(send_room_display_id, source_room_display_id)
+
+
+def style_file_room_id(style_file):
+    if not style_file:
+        return None
+    match = ROOM_STYLE_FILE_RE.search(str(style_file).replace("\\", "/"))
+    if not match:
+        return None
+    return int(match.group(1))
+
+
+def validate_style_file_for_send(*, send_room_display_id, style_file, send=False):
+    source_room = style_file_room_id(style_file)
+    if source_room is None:
+        return
+    if send and not is_same_room(send_room_display_id, source_room):
+        raise ValueError(
+            f"refusing --send with style_file learned from room {source_room}; "
+            f"send room is {send_room_display_id}"
+        )
 
 
 def summarize_activity(stage_summaries):

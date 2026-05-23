@@ -89,6 +89,13 @@ When the source room differs from the send room, learned source-room templates
 are used only for pacing and audit baselines. They are not applied as send-room
 comment templates.
 
+Payload comments use the built-in humanized codebook by default. To explicitly
+wrap compact carrier records in a learned template file during a dry run or an
+authorized same-room test, add `--template-payloads --style-file <path>`.
+For real sends, `room_<id>_templates.txt`, `room_<id>_comments.txt`, and
+`room_<id>_profile.json` paths are rejected when their room id differs from
+`--room`; cross-room templates remain dry-run only.
+
 Optional style gate:
 
 ```powershell

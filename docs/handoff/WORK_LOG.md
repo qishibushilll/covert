@@ -288,3 +288,57 @@ Live result:
 - Conclusion: the previous failure was receiver-side collection/diagnostic weakness, not the payloads being undecodable. The user-visible 17 comments were valid; the old receiver did not reliably capture/decode the full sequence.
 
 Commit: `7e15e72`
+
+## Update: 2026-05-23 Template Payload Guardrails
+
+Files changed:
+
+- `src/live_bullet_covert/online_style.py`
+- `scripts/bilibili/send_browser_cdp.py`
+- `scripts/bilibili/probes/full_http_sender.py`
+- `tests/test_online_style.py`
+- `tests/test_sender_payload_modes.py`
+- `README.md`
+- `docs/handoff/WORK_LOG.md`
+
+Behavioral summary:
+
+- Added `--template-payloads` to both sender entry points. Default payloads remain the built-in humanized codebook; the new flag explicitly switches payloads back to learned-template wrappers carrying compact records.
+- Real sends now reject explicit `room_<id>_templates.txt`, `room_<id>_comments.txt`, or `room_<id>_profile.json` style paths when the learned room id differs from `--room`.
+- The explicit style-file guard runs before online learning, room initialization, browser launch, or HTTP sending, so a cross-room style file is rejected before touching the platform.
+- Cross-room learned templates are still allowed for dry runs and still used only for pacing/audit baselines when learned through `--online-style-source-room`.
+
+Validation:
+
+```powershell
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 -m py_compile '.\src\live_bullet_covert\online_style.py' '.\scripts\bilibili\send_browser_cdp.py' '.\scripts\bilibili\probes\full_http_sender.py' '.\tests\test_online_style.py' '.\tests\test_sender_payload_modes.py'
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\tests\test_online_style.py'
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\tests\test_sender_payload_modes.py'
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\tests\offline_baseline_test.py'
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\tests\test_style_gate.py'
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\tests\test_llm_style_audit.py'
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\tests\test_receiver_humanized.py'
+```
+
+Result: passed.
+
+CLI guard smoke tests:
+
+```powershell
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\scripts\bilibili\probes\full_http_sender.py' --room 23087172 --message 'a#' --replicas 1 --fillers 0 --sleep 10 --style-file '.\data\profiles\online_style_profiles\room_7243837_templates.txt' --template-payloads --max-comments 30 --send --confirm-authorized
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\scripts\bilibili\send_browser_cdp.py' --room 23087172 --message 'a#' --replicas 1 --fillers 0 --sleep 10 --style-file '.\data\profiles\online_style_profiles\room_7243837_templates.txt' --template-payloads --max-comments 30 --send --confirm-authorized
+```
+
+Both exited before network/browser work with:
+
+```text
+refusing --send with style_file learned from room 7243837; send room is 23087172
+```
+
+Environment note:
+
+- Inside the filesystem sandbox, direct `.venv` invocations can report missing base Python `C:\Users\15052\AppData\Local\Programs\Python\Python313\python.exe`.
+- The same `.venv` works when run outside the sandbox, so this is a sandbox path-visibility issue, not a project virtualenv failure.
+- Final validation used `.venv` outside the sandbox.
+
+Commit: `2599211`
