@@ -287,4 +287,4 @@ Live result:
 - Receiver decoded successfully: `a`.
 - Conclusion: the previous failure was receiver-side collection/diagnostic weakness, not the payloads being undecodable. The user-visible 17 comments were valid; the old receiver did not reliably capture/decode the full sequence.
 
-Commit: `PENDING`
+Commit: `7e15e72`
