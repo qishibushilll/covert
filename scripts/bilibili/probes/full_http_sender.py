@@ -105,6 +105,65 @@ def apply_online_style_if_requested(args):
     return result
 
 
+def start_realtime_online_style_if_requested(args):
+    if not args.realtime_online_style:
+        return None
+    if args.online_style_learning:
+        raise SystemExit("--realtime-online-style cannot be combined with --online-style-learning")
+    if args.fixed_templates:
+        raise SystemExit("--realtime-online-style cannot be combined with --fixed-templates")
+
+    source_room = online_style.resolve_source_room(args.room, args.online_style_source_room)
+    print(
+        f"[online-style-rt] background learning: source_room={source_room} "
+        f"send_room={args.room} max_seconds={args.realtime_online_style_seconds} "
+        f"target={args.online_style_target}",
+        flush=True,
+    )
+    return online_style.RealtimeStyleMonitor(
+        room_display_id=source_room,
+        max_len=args.online_style_max_len,
+        out_dir=args.online_style_out_dir,
+        min_samples=args.online_style_min_samples,
+        target_count=args.online_style_target,
+        max_seconds=args.realtime_online_style_seconds,
+        activate=False,
+        default_cpm=args.activity_normal_cpm,
+    ).start()
+
+
+def realtime_snapshot(monitor):
+    if monitor is None:
+        return None
+    snapshot = monitor.snapshot()
+    activity = snapshot.get("activity", {})
+    print(
+        f"[online-style-rt] snapshot observed={activity.get('observed_count', 0)} "
+        f"usable={activity.get('usable_count', 0)} "
+        f"cpm={activity.get('comments_per_minute', 0.0):.2f} "
+        f"pacing_cpm={activity.get('pacing_comments_per_minute', 0.0):.2f}",
+        flush=True,
+    )
+    return snapshot
+
+
+def current_send_sleep(args, realtime_monitor, base_send_sleep):
+    if realtime_monitor is not None and args.adaptive_sleep:
+        snapshot = realtime_monitor.snapshot()
+        activity = snapshot.get("activity", {})
+        return online_style.conservative_sleep_from_activity(
+            base_sleep=base_send_sleep,
+            min_sleep=args.min_sleep,
+            comments_per_minute=activity.get(
+                "pacing_comments_per_minute",
+                activity.get("comments_per_minute", args.activity_normal_cpm),
+            ),
+            quiet_cpm=args.activity_quiet_cpm,
+            normal_cpm=args.activity_normal_cpm,
+        )
+    return base_send_sleep
+
+
 def validate_explicit_style_file_for_send(args):
     if args.fixed_templates or not args.style_file:
         return
@@ -159,6 +218,17 @@ def main():
     )
     parser.add_argument("--online-style-learning", action="store_true")
     parser.add_argument(
+        "--realtime-online-style",
+        action="store_true",
+        help="Learn source-room style in the background while preparing and sending.",
+    )
+    parser.add_argument(
+        "--realtime-online-style-seconds",
+        type=int,
+        default=900,
+        help="Maximum background realtime learning duration.",
+    )
+    parser.add_argument(
         "--online-style-source-room",
         type=int,
         help="Optional room id to passively learn for activity pacing and audit baselines. Real sends still target --room.",
@@ -197,8 +267,15 @@ def main():
         authorized_rooms_text=args.authorized_rooms,
     )
     validate_explicit_style_file_for_send(args)
-    style_learning = apply_online_style_if_requested(args)
-    actual_room_id = room_style.room_init(args.room)
+    realtime_monitor = start_realtime_online_style_if_requested(args)
+    style_learning = None
+    try:
+        style_learning = apply_online_style_if_requested(args)
+        actual_room_id = room_style.room_init(args.room)
+    except Exception:
+        if realtime_monitor is not None:
+            realtime_monitor.stop()
+        raise
     sender.TARGET_ROOM_ID = args.room
     sender.FRAGMENT_REPLICAS = args.replicas
     sender.FILLERS_PER_PAYLOAD = args.fillers
@@ -245,6 +322,9 @@ def main():
     messages.append("fin")
     activity = (style_learning or {}).get("activity", {})
     learning_source_room = (style_learning or {}).get("room_display_id", args.room)
+    if realtime_monitor is not None:
+        learning_source_room = realtime_monitor.room_display_id
+        realtime_snapshot(realtime_monitor)
     adaptive_sleep = online_style.conservative_sleep_from_activity(
         base_sleep=args.sleep,
         min_sleep=args.min_sleep,
@@ -255,7 +335,12 @@ def main():
     send_sleep = adaptive_sleep if args.adaptive_sleep and style_learning else max(args.sleep, args.min_sleep)
     gate_report = None
     if args.style_gate:
-        baseline_comments = (style_learning or {}).get("comments") or core.room_comments
+        realtime = realtime_snapshot(realtime_monitor)
+        baseline_comments = (
+            (realtime or {}).get("comments")
+            or (style_learning or {}).get("comments")
+            or core.room_comments
+        )
         gate_report = style_gate.evaluate_messages(
             messages,
             baseline_comments,
@@ -274,7 +359,12 @@ def main():
             send_sleep *= max(1.0, args.style_gate_delay_multiplier)
     llm_report = None
     if args.llm_style_audit:
-        baseline_comments = (style_learning or {}).get("comments") or core.room_comments
+        realtime = realtime_snapshot(realtime_monitor)
+        baseline_comments = (
+            (realtime or {}).get("comments")
+            or (style_learning or {}).get("comments")
+            or core.room_comments
+        )
         queued_for_audit = [
             message
             for message in messages
@@ -323,6 +413,16 @@ def main():
     print(f"min_send_sleep={args.min_sleep}")
     print(f"adaptive_sleep_enabled={bool(args.adaptive_sleep)}")
     print(f"activity_cpm={activity.get('comments_per_minute', 0.0):.2f}")
+    if realtime_monitor is not None:
+        realtime = realtime_snapshot(realtime_monitor)
+        rt_activity = realtime.get("activity", {})
+        print(f"realtime_online_style_enabled=True")
+        print(f"realtime_observed={rt_activity.get('observed_count', 0)}")
+        print(f"realtime_usable={rt_activity.get('usable_count', 0)}")
+        print(f"realtime_activity_cpm={rt_activity.get('comments_per_minute', 0.0):.2f}")
+        print(f"realtime_pacing_cpm={rt_activity.get('pacing_comments_per_minute', 0.0):.2f}")
+    else:
+        print("realtime_online_style_enabled=False")
     print(f"style_gate_enabled={bool(args.style_gate)}")
     print(f"llm_style_audit_enabled={bool(args.llm_style_audit)}")
     print(f"effective_send_sleep={send_sleep:.2f}")
@@ -342,33 +442,46 @@ def main():
         authorized_rooms_text=args.authorized_rooms,
     )
 
-    if not args.send:
-        print("dry_run=1; add --send --confirm-authorized to actually send.")
-        return
+    try:
+        if not args.send:
+            print("dry_run=1; add --send --confirm-authorized to actually send.")
+            return
 
-    if not COOKIE_PATH.exists():
-        raise SystemExit("bilibili_cookies.json not found")
+        if not COOKIE_PATH.exists():
+            raise SystemExit("bilibili_cookies.json not found")
 
-    cookie_header, csrf = load_cookie_header()
-    for index, message in enumerate(messages, 1):
-        attempt = 0
-        while True:
-            attempt += 1
-            result = post_danmaku(actual_room_id, message, cookie_header, csrf, referer_room_id=args.room)
-            code = result.get("code")
-            msg = result.get("message") or result.get("msg")
-            retry_note = f" attempt={attempt}" if attempt > 1 else ""
-            print(f"[{index}/{len(messages)}] send={message!r} code={code} msg={msg}{retry_note}")
-            if code == 0:
-                break
-            if code == 10031 and not args.retry_on_rate_limit:
-                raise SystemExit(f"rate limited; stopping low-disturbance run: {result}")
-            if code == 10031 and attempt <= args.max_retries:
-                print(f"[rate-limit] waiting {args.rate_limit_sleep:.1f}s before retrying the same comment")
-                time.sleep(args.rate_limit_sleep)
-                continue
-            raise SystemExit(f"send failed: {result}")
-        time.sleep(send_sleep)
+        cookie_header, csrf = load_cookie_header()
+        for index, message in enumerate(messages, 1):
+            attempt = 0
+            while True:
+                attempt += 1
+                result = post_danmaku(actual_room_id, message, cookie_header, csrf, referer_room_id=args.room)
+                code = result.get("code")
+                msg = result.get("message") or result.get("msg")
+                retry_note = f" attempt={attempt}" if attempt > 1 else ""
+                print(f"[{index}/{len(messages)}] send={message!r} code={code} msg={msg}{retry_note}")
+                if code == 0:
+                    break
+                if code == 10031 and not args.retry_on_rate_limit:
+                    raise SystemExit(f"rate limited; stopping low-disturbance run: {result}")
+                if code == 10031 and attempt <= args.max_retries:
+                    print(f"[rate-limit] waiting {args.rate_limit_sleep:.1f}s before retrying the same comment")
+                    time.sleep(args.rate_limit_sleep)
+                    continue
+                raise SystemExit(f"send failed: {result}")
+            live_sleep = current_send_sleep(args, realtime_monitor, send_sleep)
+            print(f"[online-style-rt] next_sleep={live_sleep:.2f}", flush=True)
+            time.sleep(live_sleep)
+    finally:
+        if realtime_monitor is not None:
+            realtime_final = realtime_monitor.stop_and_save()
+            rt_activity = realtime_final.get("activity", {})
+            print(
+                f"[online-style-rt] final observed={rt_activity.get('observed_count', 0)} "
+                f"usable={rt_activity.get('usable_count', 0)} "
+                f"cpm={rt_activity.get('comments_per_minute', 0.0):.2f}",
+                flush=True,
+            )
 
 
 if __name__ == "__main__":

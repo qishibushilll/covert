@@ -242,7 +242,7 @@ def choose_host(info):
     return host["host"], int(host.get("wss_port") or 443)
 
 
-def listen(room_display_id, seconds, on_comment, uid=0):
+def listen(room_display_id, seconds, on_comment, uid=0, should_stop=None):
     room_id = room_init(room_display_id)
     try:
         info = get_danmu_info(room_display_id, room_id)
@@ -272,6 +272,8 @@ def listen(room_display_id, seconds, on_comment, uid=0):
         started = time.time()
 
         while time.time() - started < seconds:
+            if should_stop is not None and should_stop():
+                return
             if time.time() - last_heartbeat >= 30:
                 send_frame(sock, make_packet(OP_HEARTBEAT, "[object Object]"))
                 last_heartbeat = time.time()

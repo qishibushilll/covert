@@ -384,3 +384,48 @@ Outcome:
 - Receiver collected `14/14` humanized payload comments, observed `fin`, and decoded successfully: `a`.
 
 Commit: `e9adb80`
+
+## Update: 2026-05-23 Realtime Online Style Monitoring
+
+Files changed:
+
+- `src/live_bullet_covert/bilibili_ws.py`
+- `src/live_bullet_covert/online_style.py`
+- `scripts/bilibili/send_browser_cdp.py`
+- `scripts/bilibili/probes/full_http_sender.py`
+- `tests/test_online_style.py`
+- `README.md`
+- `docs/handoff/WORK_LOG.md`
+
+Behavioral summary:
+
+- Added `--realtime-online-style` as a non-blocking alternative to `--online-style-learning`.
+- The realtime mode starts a background source-room listener and immediately proceeds with payload generation, browser setup, and dry-run/send preparation.
+- Before each sent comment, the sender recomputes conservative sleep from the latest observed source-room CPM. If no samples have arrived yet, pacing falls back to the configured normal CPM instead of treating the room as quiet.
+- Realtime learning saves source-room templates at shutdown when enough samples were collected.
+- `--realtime-online-style` is mutually exclusive with staged `--online-style-learning` and `--fixed-templates`.
+
+Validation:
+
+```powershell
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 -m py_compile '.\src\live_bullet_covert\online_style.py' '.\src\live_bullet_covert\bilibili_ws.py' '.\scripts\bilibili\send_browser_cdp.py' '.\scripts\bilibili\probes\full_http_sender.py' '.\tests\test_online_style.py'
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\tests\test_online_style.py'
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\tests\test_sender_payload_modes.py'
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\tests\offline_baseline_test.py'
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\tests\test_style_gate.py'
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\tests\test_llm_style_audit.py'
+```
+
+Dry-run smoke test:
+
+```powershell
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\scripts\bilibili\send_browser_cdp.py' --room 23087172 --online-style-source-room 6 --message 'a#' --replicas 1 --fillers 0 --realtime-online-style --realtime-online-style-seconds 20 --online-style-target 10 --online-style-min-samples 999 --adaptive-sleep --sleep 10 --min-sleep 10 --page-wait 3 --warmup-count 1 --max-comments 30 --port 9346 --user-data-dir 'local_secrets\chrome_profiles\chrome_cdp_profile_23087172_realtime_dryrun'
+```
+
+Result:
+
+- Passed.
+- The dry-run entered payload generation and browser preview immediately, without waiting for the 20-second realtime learning window to finish.
+- No real send was performed.
+
+Commit: pending

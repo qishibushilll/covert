@@ -89,6 +89,15 @@ When the source room differs from the send room, learned source-room templates
 are used only for pacing and audit baselines. They are not applied as send-room
 comment templates.
 
+For lower startup latency, use realtime online style monitoring instead of the
+blocking staged learner. This starts sending setup immediately while a
+background listener learns the source-room activity and adjusts later inter-send
+sleep values from the latest observed CPM:
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 .\scripts\bilibili\send_browser_cdp.py --room 23087172 --online-style-source-room 6 --message 'hi#' --replicas 1 --fillers 0 --realtime-online-style --realtime-online-style-seconds 900 --adaptive-sleep --sleep 10 --min-sleep 10 --max-comments 30
+```
+
 Payload comments use the built-in humanized codebook by default. To explicitly
 wrap compact carrier records in a learned template file during a dry run or an
 authorized same-room test, add `--template-payloads --style-file <path>`.

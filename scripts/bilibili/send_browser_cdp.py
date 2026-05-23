@@ -105,6 +105,66 @@ def apply_online_style_if_requested(args):
     return result
 
 
+def start_realtime_online_style_if_requested(args):
+    if not args.realtime_online_style:
+        return None
+    if args.online_style_learning:
+        raise SystemExit("--realtime-online-style cannot be combined with --online-style-learning")
+    if args.fixed_templates:
+        raise SystemExit("--realtime-online-style cannot be combined with --fixed-templates")
+
+    source_room = online_style.resolve_source_room(args.room, args.online_style_source_room)
+    print(
+        f"[online-style-rt] background learning: source_room={source_room} "
+        f"send_room={args.room} max_seconds={args.realtime_online_style_seconds} "
+        f"target={args.online_style_target}",
+        flush=True,
+    )
+    monitor = online_style.RealtimeStyleMonitor(
+        room_display_id=source_room,
+        max_len=args.online_style_max_len,
+        out_dir=args.online_style_out_dir,
+        min_samples=args.online_style_min_samples,
+        target_count=args.online_style_target,
+        max_seconds=args.realtime_online_style_seconds,
+        activate=False,
+        default_cpm=args.activity_normal_cpm,
+    ).start()
+    return monitor
+
+
+def realtime_snapshot(monitor):
+    if monitor is None:
+        return None
+    snapshot = monitor.snapshot()
+    activity = snapshot.get("activity", {})
+    print(
+        f"[online-style-rt] snapshot observed={activity.get('observed_count', 0)} "
+        f"usable={activity.get('usable_count', 0)} "
+        f"cpm={activity.get('comments_per_minute', 0.0):.2f} "
+        f"pacing_cpm={activity.get('pacing_comments_per_minute', 0.0):.2f}",
+        flush=True,
+    )
+    return snapshot
+
+
+def current_send_sleep(args, style_learning, realtime_monitor, base_send_sleep):
+    if realtime_monitor is not None and args.adaptive_sleep:
+        snapshot = realtime_monitor.snapshot()
+        activity = snapshot.get("activity", {})
+        return online_style.conservative_sleep_from_activity(
+            base_sleep=base_send_sleep,
+            min_sleep=args.min_sleep,
+            comments_per_minute=activity.get(
+                "pacing_comments_per_minute",
+                activity.get("comments_per_minute", args.activity_normal_cpm),
+            ),
+            quiet_cpm=args.activity_quiet_cpm,
+            normal_cpm=args.activity_normal_cpm,
+        )
+    return base_send_sleep
+
+
 def main():
     parser = argparse.ArgumentParser(description="Browser-simulated live bullet covert sender using Chrome DevTools Protocol.")
     parser.add_argument("--room", type=int, default=23087172)
@@ -136,6 +196,17 @@ def main():
         help="Comma/space separated room ids authorized for real sending. Defaults to COVLBCG_AUTHORIZED_ROOMS or 23087172.",
     )
     parser.add_argument("--online-style-learning", action="store_true")
+    parser.add_argument(
+        "--realtime-online-style",
+        action="store_true",
+        help="Learn source-room style in the background while preparing and sending.",
+    )
+    parser.add_argument(
+        "--realtime-online-style-seconds",
+        type=int,
+        default=900,
+        help="Maximum background realtime learning duration.",
+    )
     parser.add_argument(
         "--online-style-source-room",
         type=int,
@@ -172,10 +243,21 @@ def main():
         authorized_rooms_text=args.authorized_rooms,
     )
     validate_explicit_style_file_for_send(args)
-    style_learning = apply_online_style_if_requested(args)
-    actual_room_id, core, payloads, messages = build_messages(args)
+    realtime_monitor = start_realtime_online_style_if_requested(args)
+    style_learning = None
+    try:
+        style_learning = apply_online_style_if_requested(args)
+        actual_room_id, core, payloads, messages = build_messages(args)
+    except Exception:
+        if realtime_monitor is not None:
+            realtime_monitor.stop()
+        raise
     activity = (style_learning or {}).get("activity", {})
+    if realtime_monitor is not None:
+        realtime_snapshot(realtime_monitor)
     learning_source_room = (style_learning or {}).get("room_display_id", args.room)
+    if realtime_monitor is not None:
+        learning_source_room = realtime_monitor.room_display_id
     adaptive_sleep = online_style.conservative_sleep_from_activity(
         base_sleep=args.sleep,
         min_sleep=args.min_sleep,
@@ -186,7 +268,12 @@ def main():
     send_sleep = adaptive_sleep if args.adaptive_sleep and style_learning else max(args.sleep, args.min_sleep)
     gate_report = None
     if args.style_gate:
-        baseline_comments = (style_learning or {}).get("comments") or core.room_comments
+        realtime = realtime_snapshot(realtime_monitor)
+        baseline_comments = (
+            (realtime or {}).get("comments")
+            or (style_learning or {}).get("comments")
+            or core.room_comments
+        )
         gate_report = style_gate.evaluate_messages(
             messages,
             baseline_comments,
@@ -205,7 +292,12 @@ def main():
             send_sleep *= max(1.0, args.style_gate_delay_multiplier)
     llm_report = None
     if args.llm_style_audit:
-        baseline_comments = (style_learning or {}).get("comments") or core.room_comments
+        realtime = realtime_snapshot(realtime_monitor)
+        baseline_comments = (
+            (realtime or {}).get("comments")
+            or (style_learning or {}).get("comments")
+            or core.room_comments
+        )
         queued_for_audit = [
             message
             for message in messages
@@ -247,6 +339,16 @@ def main():
     print(f"min_send_sleep={args.min_sleep}")
     print(f"adaptive_sleep_enabled={bool(args.adaptive_sleep)}")
     print(f"activity_cpm={activity.get('comments_per_minute', 0.0):.2f}")
+    if realtime_monitor is not None:
+        realtime = realtime_snapshot(realtime_monitor)
+        rt_activity = realtime.get("activity", {})
+        print(f"realtime_online_style_enabled=True")
+        print(f"realtime_observed={rt_activity.get('observed_count', 0)}")
+        print(f"realtime_usable={rt_activity.get('usable_count', 0)}")
+        print(f"realtime_activity_cpm={rt_activity.get('comments_per_minute', 0.0):.2f}")
+        print(f"realtime_pacing_cpm={rt_activity.get('pacing_comments_per_minute', 0.0):.2f}")
+    else:
+        print("realtime_online_style_enabled=False")
     print(f"style_gate_enabled={bool(args.style_gate)}")
     print(f"llm_style_audit_enabled={bool(args.llm_style_audit)}")
     print(f"effective_send_sleep={send_sleep:.2f}")
@@ -295,9 +397,20 @@ def main():
             print(f"[{index}/{len(messages)}] browser_send={message!r} result={result}")
             if not result.get("ok"):
                 raise SystemExit(f"browser send failed at {index}: {result}")
-            time.sleep(send_sleep)
+            live_sleep = current_send_sleep(args, style_learning, realtime_monitor, send_sleep)
+            print(f"[online-style-rt] next_sleep={live_sleep:.2f}", flush=True)
+            time.sleep(live_sleep)
         print("[browser] send complete")
     finally:
+        if realtime_monitor is not None:
+            realtime_final = realtime_monitor.stop_and_save()
+            rt_activity = realtime_final.get("activity", {})
+            print(
+                f"[online-style-rt] final observed={rt_activity.get('observed_count', 0)} "
+                f"usable={rt_activity.get('usable_count', 0)} "
+                f"cpm={rt_activity.get('comments_per_minute', 0.0):.2f}",
+                flush=True,
+            )
         if cdp is not None:
             cdp.close()
         print("[browser] Chrome left open for inspection.")
