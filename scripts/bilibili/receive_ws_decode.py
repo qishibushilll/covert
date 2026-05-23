@@ -16,31 +16,52 @@ def main():
     parser = argparse.ArgumentParser(description="Decode live bullet covert comments from a raw Bilibili WebSocket listener.")
     parser.add_argument("--room", type=int, default=23087172)
     parser.add_argument("--seconds", type=int, default=240)
+    parser.add_argument(
+        "--collect-after-sync",
+        action="store_true",
+        help="After CAL, collect every observed comment until fin so missed payload detection is diagnosable.",
+    )
+    parser.add_argument(
+        "--log-all",
+        action="store_true",
+        help="Print every observed comment with carrier detection status.",
+    )
     args = parser.parse_args()
 
     decoder = receiver.CovLBCG_Decoder()
     data = []
     decoded = False
+    saw_sync = False
 
     print(f"[ws-listen] room={args.room}, seconds={args.seconds}", flush=True)
 
     def on_comment(content, timestamp):
-        nonlocal decoded
+        nonlocal decoded, saw_sync
         has_encoding = decoder.has_encoding(content)
         clock = time.strftime("%H:%M:%S", time.localtime(timestamp))
+        has_join = receiver.JOIN_COMMAND in content
+        has_sync = receiver.SYNC_COMMAND in content
+        if has_sync:
+            saw_sync = True
 
-        if receiver.JOIN_COMMAND in content or receiver.SYNC_COMMAND in content or has_encoding:
-            data.append({"c": content, "t": timestamp})
-            carrier = decoder.detect_carrier(content)
-            code = decoder.decode_with_carrier(content, carrier)
-            print(f"[{clock}] collect carrier={carrier} code={code} content={content}", flush=True)
-        elif "fin" in content:
+        if "fin" in content:
             print(f"[{clock}] FIN content={content}", flush=True)
             print(f"[decode] collected={len(data)}", flush=True)
             if data:
                 decoder.decode(data)
                 decoded = True
             return True
+        if has_join or has_sync or has_encoding or (args.collect_after_sync and saw_sync):
+            data.append({"c": content, "t": timestamp})
+            carrier = decoder.detect_carrier(content)
+            code = decoder.decode_with_carrier(content, carrier)
+            print(f"[{clock}] collect carrier={carrier} code={code} content={content}", flush=True)
+        elif args.log_all:
+            carrier = decoder.detect_carrier(content)
+            print(
+                f"[{clock}] skip carrier={carrier} has_encoding={has_encoding} content={content}",
+                flush=True,
+            )
         return False
 
     bilibili_ws.listen(args.room, args.seconds, on_comment)

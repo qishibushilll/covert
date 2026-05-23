@@ -10,9 +10,15 @@ import urllib.request
 import zlib
 from pathlib import Path
 
+try:
+    import brotli
+except ImportError:
+    brotli = None
+
 
 WS_PATH = "/sub"
 COOKIE_PATH = Path("bilibili_cookies.json")
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 HEADER_STRUCT = struct.Struct(">IHHII")
 HEADER_LEN = 16
 OP_HEARTBEAT = 2
@@ -45,11 +51,25 @@ def load_cookie_header():
     )
 
 
-def load_cookies():
-    if not COOKIE_PATH.exists():
+def cookie_paths(path=None):
+    if path:
+        return [Path(path)]
+    return [
+        COOKIE_PATH,
+        PROJECT_ROOT / "local_secrets" / "bilibili_cookies.json",
+    ]
+
+
+def load_cookies(path=None):
+    cookie_path = None
+    for candidate in cookie_paths(path):
+        if candidate.exists():
+            cookie_path = candidate
+            break
+    if cookie_path is None:
         return {}
     try:
-        raw_cookies = json.loads(COOKIE_PATH.read_text(encoding="utf-8"))
+        raw_cookies = json.loads(cookie_path.read_text(encoding="utf-8"))
     except Exception:
         return {}
     cookies = {}
@@ -126,6 +146,11 @@ def parse_packets(data):
                 try:
                     events.extend(parse_packets(zlib.decompress(body)))
                 except zlib.error:
+                    pass
+            elif version == 3 and brotli is not None:
+                try:
+                    events.extend(parse_packets(brotli.decompress(body)))
+                except Exception:
                     pass
             elif version in (0, 1):
                 try:

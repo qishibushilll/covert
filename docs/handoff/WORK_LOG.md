@@ -233,3 +233,58 @@ Outcome:
 - Receiver observed `JOIN`, `CAL`, and `3` identifiable humanized payload comments, but did not observe `fin` or complete a final decode. Next debugging target is receiver/platform visibility for humanized payloads, not the cross-room pacing path.
 
 Commit: `55fe71f`
+
+## Update: 2026-05-23 Receiver Diagnostics and Successful Decode
+
+Files changed:
+
+- `src/live_bullet_covert/bilibili_ws.py`
+- `scripts/bilibili/receive_ws_decode.py`
+- `tests/test_receiver_humanized.py`
+- `data/profiles/online_style_profiles/room_7243837_comments.txt`
+- `data/profiles/online_style_profiles/room_7243837_templates.txt`
+- `data/profiles/online_style_profiles/room_7243837_profile.json`
+- `docs/handoff/WORK_LOG.md`
+
+Behavioral summary:
+
+- Investigated why the user saw all 17 comments in the live room while the receiver did not decode.
+- Confirmed offline that all 14 humanized payload comments from `send_cdp_crossroom_real_20260523_101338.log` are decodable by `receiver.CovLBCG_Decoder`.
+- Updated the raw WebSocket listener to load cookies from `local_secrets/bilibili_cookies.json` and to parse brotli-compressed Bilibili message packets when `brotli` is installed.
+- Added receiver diagnostic flags:
+  - `--log-all`: print every observed comment with carrier detection status.
+  - `--collect-after-sync`: after `CAL`, collect every observed comment until `fin` so receiver-side missed detection is visible.
+- Added `tests/test_receiver_humanized.py` covering the real 14 payload comments from the cross-room run.
+
+Validation:
+
+```powershell
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 -m py_compile '.\src\live_bullet_covert\bilibili_ws.py' '.\scripts\bilibili\receive_ws_decode.py' '.\tests\test_receiver_humanized.py'
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\tests\test_receiver_humanized.py'
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\tests\offline_baseline_test.py'
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\tests\test_online_style.py'
+```
+
+Result: passed.
+
+Live diagnostic trial:
+
+```powershell
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 'scripts\bilibili\receive_ws_decode.py' --room 23087172 --seconds 900 --log-all --collect-after-sync
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 'scripts\bilibili\send_browser_cdp.py' --room 23087172 --online-style-source-room 7243837 --message 'a#' --replicas 1 --fillers 0 --online-style-learning --online-style-stages 1 --online-style-seconds 20 --online-style-target 10 --online-style-min-samples 8 --adaptive-sleep --sleep 10 --min-sleep 10 --page-wait 35 --warmup-count 1 --max-comments 30 --port 9343 --user-data-dir 'local_secrets\chrome_profiles\chrome_cdp_profile_23087172_humanized_demo' --send --confirm-authorized
+```
+
+Observed logs:
+
+- `runs/logs/recv_diag_23087172_20260523_105331.log`
+- `runs/logs/send_diag_crossroom_20260523_105425.log`
+
+Live result:
+
+- Source room `7243837` produced `8` samples in 20 seconds, `activity_cpm=22.49`, so `effective_send_sleep=10.00`.
+- Sender targeted authorized room `23087172` and sent all `17/17` comments successfully.
+- Enhanced receiver observed `JOIN`, `CAL`, all `14/14` humanized payload comments, and `fin`.
+- Receiver decoded successfully: `a`.
+- Conclusion: the previous failure was receiver-side collection/diagnostic weakness, not the payloads being undecodable. The user-visible 17 comments were valid; the old receiver did not reliably capture/decode the full sequence.
+
+Commit: `PENDING`
