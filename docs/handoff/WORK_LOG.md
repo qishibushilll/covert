@@ -232,4 +232,4 @@ Outcome:
 - Trial 2 sent all `17/17` comments with `result={'ok': True}` and no stderr output.
 - Receiver observed `JOIN`, `CAL`, and `3` identifiable humanized payload comments, but did not observe `fin` or complete a final decode. Next debugging target is receiver/platform visibility for humanized payloads, not the cross-room pacing path.
 
-Commit: `PENDING`
+Commit: `55fe71f`
