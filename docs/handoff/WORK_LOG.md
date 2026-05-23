@@ -157,4 +157,4 @@ Validation:
 
 Result: passed. The dry-run did not use `--send`; no real send was performed. The LLM audit path returned `status=stop` before any model call because the test threshold required 999 baseline samples.
 
-Commit: `PENDING`
+Commit: `ea587dc`
