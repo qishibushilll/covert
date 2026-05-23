@@ -87,3 +87,16 @@ The style gate is a conservative send/no-send check. It scores queued comments
 against passively collected room samples and can delay or stop a real send when
 the batch is far from the current room sample distribution. It does not generate
 or rewrite comments.
+
+Optional LLM style audit:
+
+```powershell
+$env:COVLBCG_LLM_STYLE_AUDIT_ENDPOINT="https://your-openai-compatible-endpoint/v1/chat/completions"
+$env:COVLBCG_LLM_STYLE_AUDIT_API_KEY="..."
+$env:COVLBCG_LLM_STYLE_AUDIT_MODEL="your-model"
+.\.venv\Scripts\python.exe -X utf8 .\scripts\bilibili\send_browser_cdp.py --room 23087172 --message 'hi#' --replicas 1 --fillers 0 --online-style-learning --adaptive-sleep --style-gate --llm-style-audit --sleep 10 --min-sleep 10 --max-comments 30
+```
+
+The LLM audit is also a gate only. The prompt and parser reject generated,
+rewritten, or candidate chat messages. The allowed outcomes are `pass`, `delay`,
+or `stop`.

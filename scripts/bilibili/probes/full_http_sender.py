@@ -9,6 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from live_bullet_covert import llm_style_audit
 from live_bullet_covert import online_style
 from live_bullet_covert import room_style
 from live_bullet_covert import send_policy
@@ -145,6 +146,14 @@ def main():
     parser.add_argument("--style-gate-max-reject-ratio", type=float, default=style_gate.DEFAULT_STYLE_GATE_MAX_REJECT_RATIO)
     parser.add_argument("--style-gate-min-samples", type=int, default=style_gate.DEFAULT_STYLE_GATE_MIN_SAMPLES)
     parser.add_argument("--style-gate-delay-multiplier", type=float, default=style_gate.DEFAULT_STYLE_GATE_DELAY_MULTIPLIER)
+    parser.add_argument("--llm-style-audit", action="store_true")
+    parser.add_argument("--llm-style-audit-endpoint", default=llm_style_audit.default_endpoint())
+    parser.add_argument("--llm-style-audit-model", default=llm_style_audit.default_model())
+    parser.add_argument("--llm-style-audit-timeout", type=float, default=llm_style_audit.DEFAULT_TIMEOUT)
+    parser.add_argument("--llm-style-audit-sample-limit", type=int, default=llm_style_audit.DEFAULT_SAMPLE_LIMIT)
+    parser.add_argument("--llm-style-audit-message-limit", type=int, default=llm_style_audit.DEFAULT_MESSAGE_LIMIT)
+    parser.add_argument("--llm-style-audit-min-samples", type=int, default=llm_style_audit.DEFAULT_MIN_SAMPLES)
+    parser.add_argument("--llm-style-audit-delay-multiplier", type=float, default=llm_style_audit.DEFAULT_DELAY_MULTIPLIER)
     args = parser.parse_args()
 
     from live_bullet_covert import sender
@@ -218,6 +227,34 @@ def main():
             raise SystemExit("style gate requested stop; not sending")
         if gate_report["status"] == "delay":
             send_sleep *= max(1.0, args.style_gate_delay_multiplier)
+    llm_report = None
+    if args.llm_style_audit:
+        baseline_comments = (style_learning or {}).get("comments") or core.room_comments
+        queued_for_audit = [
+            message
+            for message in messages
+            if message not in {sender.JOIN_COMMAND, sender.SYNC_COMMAND, "fin"}
+        ]
+        try:
+            llm_report = llm_style_audit.audit_messages(
+                room_id=args.room,
+                baseline_comments=baseline_comments,
+                queued_messages=queued_for_audit,
+                endpoint=args.llm_style_audit_endpoint,
+                model=args.llm_style_audit_model,
+                timeout=args.llm_style_audit_timeout,
+                sample_limit=args.llm_style_audit_sample_limit,
+                message_limit=args.llm_style_audit_message_limit,
+                min_samples=args.llm_style_audit_min_samples,
+            )
+        except Exception as exc:
+            raise SystemExit(f"LLM style audit failed: {exc}") from exc
+        print("[llm-style-audit]")
+        print(llm_style_audit.summarize_audit(llm_report))
+        if llm_report["status"] == "stop" and args.send:
+            raise SystemExit("LLM style audit requested stop; not sending")
+        if llm_report["status"] == "delay":
+            send_sleep *= max(1.0, args.llm_style_audit_delay_multiplier)
 
     print(f"room_display_id={args.room}")
     print(f"room_id={actual_room_id}")
@@ -240,6 +277,7 @@ def main():
     print(f"adaptive_sleep_enabled={bool(args.adaptive_sleep)}")
     print(f"activity_cpm={activity.get('comments_per_minute', 0.0):.2f}")
     print(f"style_gate_enabled={bool(args.style_gate)}")
+    print(f"llm_style_audit_enabled={bool(args.llm_style_audit)}")
     print(f"effective_send_sleep={send_sleep:.2f}")
     print(f"authorized_rooms={sorted(send_policy.authorized_rooms(args.authorized_rooms))}")
     print("preview:")
