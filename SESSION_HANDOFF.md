@@ -623,3 +623,5 @@ usable realtime wrappers do not produce a rebuilt payload preview.
 Local-state warning: the user's `src/live_bullet_covert/send_policy.py` change
 to `DEFAULT_AUTHORIZED_ROOM_ID = 6` is not part of this fix and should not be
 committed unless explicitly requested.
+
+Commit containing the fix: `9b9d443`.

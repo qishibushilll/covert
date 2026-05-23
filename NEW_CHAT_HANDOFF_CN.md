@@ -770,3 +770,5 @@ room 6 dry-run 无发送验证结果：
 - 如果带 `--send` 遇到同样页面状态，会在发送前停止。
 
 注意：`src/live_bullet_covert/send_policy.py` 里用户本地可能把 `DEFAULT_AUTHORIZED_ROOM_ID` 改成了 `6`。这不是本次修复的一部分，不要误提交或覆盖，除非用户明确要求。
+
+对应修复提交：`9b9d443`。
