@@ -98,6 +98,14 @@ sleep values from the latest observed CPM:
 .\.venv\Scripts\python.exe -X utf8 .\scripts\bilibili\send_browser_cdp.py --room 23087172 --online-style-source-room 6 --message 'hi#' --replicas 1 --fillers 0 --realtime-online-style --realtime-online-style-seconds 900 --adaptive-sleep --sleep 10 --min-sleep 10 --max-comments 30
 ```
 
+Realtime monitoring does not change payload text by itself. By default it only
+updates activity pacing, style-gate baselines, LLM-audit baselines, and saved
+source-room profiles. To rebuild payload comments from samples learned during
+the same run, add `--realtime-template-payloads`; the browser sender rebuilds
+the payload queue after the page wait and prints `preview_rebuilt`. Real sends
+with realtime template payloads are allowed only when the realtime source room
+matches `--room`.
+
 Payload comments use the built-in humanized codebook by default. To explicitly
 wrap compact carrier records in a learned template file during a dry run or an
 authorized same-room test, add `--template-payloads --style-file <path>`.

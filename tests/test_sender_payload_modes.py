@@ -98,10 +98,28 @@ def test_template_payload_mode_round_trips_message():
     assert "成功解码: a" in decode_log.getvalue()
 
 
+def test_core_can_use_realtime_room_comments_without_file():
+    decoder = receiver.CovLBCG_Decoder()
+    with SenderConfig():
+        sender.HUMANIZED_CARRIER_ENABLED = False
+        sender.COMPACT_EMBEDDING_ENABLED = True
+        sender.SEMANTIC_EMBEDDING_ENABLED = True
+        random.seed(20260523)
+        core = sender.CovLBCG_Core(room_comments=ROOM_COMMENTS)
+        payload = core.make_payload_comment("00006")
+
+    assert core.room_comments == ROOM_COMMENTS
+    assert payload["carrier"] == "compact"
+    assert decoder.detect_carrier(payload["c"]) == "compact"
+    assert decoder.decode_with_carrier(payload["c"], "compact") == "00006"
+    assert sender.strip_carrier_chars(payload["c"]) in ROOM_COMMENTS
+
+
 def main():
     test_default_payload_mode_uses_humanized_codebook()
     test_template_payload_mode_wraps_compact_records_in_room_comments()
     test_template_payload_mode_round_trips_message()
+    test_core_can_use_realtime_room_comments_without_file()
     print("[PASS] sender_payload_modes")
 
 

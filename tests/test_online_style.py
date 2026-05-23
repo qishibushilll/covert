@@ -70,6 +70,28 @@ def test_same_room_style_file_allowed_for_real_send():
     )
 
 
+def test_cross_room_realtime_templates_are_rejected_for_real_send():
+    try:
+        online_style.validate_realtime_template_source_for_send(
+            send_room_display_id=23087172,
+            source_room_display_id=6,
+            send=True,
+        )
+    except ValueError as exc:
+        assert "refusing --send" in str(exc)
+        assert "realtime templates" in str(exc)
+    else:
+        raise AssertionError("expected cross-room realtime templates to be rejected")
+
+
+def test_same_room_realtime_templates_allowed_for_real_send():
+    online_style.validate_realtime_template_source_for_send(
+        send_room_display_id=6,
+        source_room_display_id=6,
+        send=True,
+    )
+
+
 def test_realtime_monitor_uses_default_cpm_before_samples():
     monitor = online_style.RealtimeStyleMonitor(room_display_id=6, default_cpm=20.0)
     monitor.started_at = 100.0
@@ -89,6 +111,14 @@ def test_realtime_monitor_records_unique_clean_comments():
     assert snapshot["activity"]["observed_count"] == 4
     assert snapshot["comments"] == ["hello", "world"]
     assert snapshot["activity"]["usable_count"] == 2
+
+
+def test_realtime_monitor_wait_for_samples_returns_when_ready():
+    monitor = online_style.RealtimeStyleMonitor(room_display_id=6, max_len=20, target_count=2)
+    monitor.started_at = 100.0
+    monitor._on_comment("hello", 101.0)
+    snapshot = monitor.wait_for_samples(1, timeout=0.0)
+    assert snapshot["comments"] == ["hello"]
 
 
 def test_realtime_monitor_save_respects_min_samples(tmp_dir=None):
@@ -131,8 +161,11 @@ def main():
     test_cross_room_style_file_is_rejected_for_real_send()
     test_cross_room_style_file_allowed_for_dry_run()
     test_same_room_style_file_allowed_for_real_send()
+    test_cross_room_realtime_templates_are_rejected_for_real_send()
+    test_same_room_realtime_templates_allowed_for_real_send()
     test_realtime_monitor_uses_default_cpm_before_samples()
     test_realtime_monitor_records_unique_clean_comments()
+    test_realtime_monitor_wait_for_samples_returns_when_ready()
     test_realtime_monitor_save_respects_min_samples()
     print("[PASS] online_style")
 

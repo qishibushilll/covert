@@ -429,3 +429,58 @@ Result:
 - No real send was performed.
 
 Commit: `9065558`
+
+## Update: 2026-05-23 Realtime Template Payload Rebuild
+
+Files changed:
+
+- `src/live_bullet_covert/online_style.py`
+- `src/live_bullet_covert/sender.py`
+- `scripts/bilibili/send_browser_cdp.py`
+- `scripts/bilibili/probes/full_http_sender.py`
+- `tests/test_online_style.py`
+- `tests/test_sender_payload_modes.py`
+- `README.md`
+- `docs/handoff/WORK_LOG.md`
+
+Behavioral summary:
+
+- Clarified realtime online style monitoring semantics: by default it only
+  affects pacing/audit baselines and saved profiles, not payload text.
+- Added `--realtime-template-payloads` plus sample threshold/wait controls.
+  With the browser/CDP sender, this rebuilds the payload queue after the page
+  wait using realtime samples collected in the same run, then prints
+  `preview_rebuilt` before dry-run/send.
+- Real sends with realtime template payloads are guarded by a same-room check:
+  `source_room` must equal `--room`. Cross-room realtime templates are rejected
+  for real sends just like cross-room style files.
+- `CovLBCG_Core` can now accept in-memory room comments, so realtime samples do
+  not have to be written to a template file before use.
+
+Validation:
+
+```powershell
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 -m py_compile '.\src\live_bullet_covert\online_style.py' '.\src\live_bullet_covert\sender.py' '.\scripts\bilibili\send_browser_cdp.py' '.\scripts\bilibili\probes\full_http_sender.py' '.\tests\test_online_style.py' '.\tests\test_sender_payload_modes.py'
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\tests\test_online_style.py'
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\tests\test_sender_payload_modes.py'
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\tests\offline_baseline_test.py'
+```
+
+Result: passed.
+
+Dry-run smoke test:
+
+```powershell
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\scripts\bilibili\send_browser_cdp.py' --room 6 --online-style-source-room 6 --message 'a#' --replicas 1 --fillers 0 --realtime-online-style --realtime-template-payloads --realtime-template-min-samples 4 --realtime-template-wait 20 --realtime-online-style-seconds 60 --online-style-target 20 --online-style-min-samples 999 --adaptive-sleep --sleep 10 --min-sleep 10 --page-wait 5 --warmup-count 1 --max-comments 30 --port 9349 --user-data-dir 'local_secrets\chrome_profiles\chrome_cdp_profile_room6_realtime_templates_dryrun'
+```
+
+Result:
+
+- No `--send`; no comments were sent.
+- Initial `preview` still showed the default humanized codebook because it is
+  generated before browser setup.
+- After page wait, realtime samples from room `6` were available and the sender
+  rebuilt payloads with `realtime_template_payloads_active=True`.
+- `preview_rebuilt` used current-room samples from the same run, including
+  examples like `神人`, `贪吃`, `幻视AL打T1`, and `大树来抓一波就炸了`.
+- Port `9349` was free after the run.

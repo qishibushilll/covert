@@ -404,7 +404,7 @@ class ReedSolomon:
 
 
 class CovLBCG_Core:
-    def __init__(self):
+    def __init__(self, room_comments=None):
         chars = SAFE_CHARS
         self.char_map = {c: 1.0 / len(chars) for c in chars}
         self.cum_ranges = {}
@@ -419,7 +419,14 @@ class CovLBCG_Core:
         
         # 初始化纠错编码
         self.rs = ReedSolomon(n=12, k=10)  # 10位信息 + 2位校验
-        self.room_comments = load_room_comments()
+        if room_comments is None:
+            self.room_comments = load_room_comments()
+        else:
+            self.room_comments = [
+                comment
+                for comment in (normalize_room_comment(item) for item in room_comments)
+                if comment
+            ]
 
     def sanitize_input(self, text):
         replacements = {'！': '!', '？': '?', '，': ',', '。': '.', ' ': '_'}

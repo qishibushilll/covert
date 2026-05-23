@@ -52,6 +52,19 @@ def validate_style_file_for_send(*, send_room_display_id, style_file, send=False
         )
 
 
+def validate_realtime_template_source_for_send(
+    *,
+    send_room_display_id,
+    source_room_display_id,
+    send=False,
+):
+    if send and not is_same_room(send_room_display_id, source_room_display_id):
+        raise ValueError(
+            f"refusing --send with realtime templates learned from room {source_room_display_id}; "
+            f"send room is {send_room_display_id}"
+        )
+
+
 def summarize_activity(stage_summaries):
     observed = sum(stage.get("observed_count", 0) for stage in stage_summaries)
     elapsed = sum(stage.get("elapsed_seconds", 0.0) for stage in stage_summaries)
@@ -129,6 +142,18 @@ class RealtimeStyleMonitor:
         self._stop.set()
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=max(0.1, float(timeout)))
+
+    def wait_for_samples(self, min_count, timeout=0.0):
+        min_count = max(1, int(min_count))
+        deadline = time.time() + max(0.0, float(timeout))
+        while True:
+            snapshot = self.snapshot()
+            if len(snapshot.get("comments", [])) >= min_count or self._stop.is_set():
+                return snapshot
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                return snapshot
+            time.sleep(min(0.25, remaining))
 
     def _run(self):
         try:

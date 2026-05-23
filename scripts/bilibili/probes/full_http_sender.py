@@ -114,6 +114,15 @@ def start_realtime_online_style_if_requested(args):
         raise SystemExit("--realtime-online-style cannot be combined with --fixed-templates")
 
     source_room = online_style.resolve_source_room(args.room, args.online_style_source_room)
+    if args.realtime_template_payloads:
+        try:
+            online_style.validate_realtime_template_source_for_send(
+                send_room_display_id=args.room,
+                source_room_display_id=source_room,
+                send=args.send,
+            )
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
     print(
         f"[online-style-rt] background learning: source_room={source_room} "
         f"send_room={args.room} max_seconds={args.realtime_online_style_seconds} "
@@ -162,6 +171,49 @@ def current_send_sleep(args, realtime_monitor, base_send_sleep):
             normal_cpm=args.activity_normal_cpm,
         )
     return base_send_sleep
+
+
+def rebuild_messages_from_realtime_templates(args, monitor, sender):
+    if not args.realtime_template_payloads:
+        return None
+    try:
+        online_style.validate_realtime_template_source_for_send(
+            send_room_display_id=args.room,
+            source_room_display_id=monitor.room_display_id,
+            send=args.send,
+        )
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+
+    snapshot = monitor.wait_for_samples(
+        args.realtime_template_min_samples,
+        timeout=args.realtime_template_wait,
+    )
+    comments = snapshot.get("comments") or []
+    if len(comments) < args.realtime_template_min_samples:
+        message = (
+            "[online-style-rt] realtime template samples insufficient: "
+            f"{len(comments)}/{args.realtime_template_min_samples}"
+        )
+        if args.send:
+            raise SystemExit(f"{message}; stopping real send")
+        print(f"{message}; keeping initial payload preview", flush=True)
+        return None
+
+    print(
+        "[online-style-rt] rebuilding payloads from realtime templates: "
+        f"samples={len(comments)}",
+        flush=True,
+    )
+    args.template_payloads = True
+    sender.HUMANIZED_CARRIER_ENABLED = False
+    random.seed(20260513)
+    core = sender.CovLBCG_Core(room_comments=comments)
+    payloads = core.gen_payloads(args.message)
+    messages = [sender.JOIN_COMMAND, sender.SYNC_COMMAND]
+    messages.extend(payload["c"] for payload in payloads)
+    messages.append("fin")
+    return core, payloads, messages, snapshot
 
 
 def validate_explicit_style_file_for_send(args):
@@ -223,6 +275,23 @@ def main():
         help="Learn source-room style in the background while preparing and sending.",
     )
     parser.add_argument(
+        "--realtime-template-payloads",
+        action="store_true",
+        help="Before sending, rebuild payload comments from realtime learned same-room samples.",
+    )
+    parser.add_argument(
+        "--realtime-template-min-samples",
+        type=int,
+        default=online_style.DEFAULT_ONLINE_STYLE_MIN_SAMPLES,
+        help="Minimum realtime samples required before rebuilding payloads from learned templates.",
+    )
+    parser.add_argument(
+        "--realtime-template-wait",
+        type=float,
+        default=0.0,
+        help="Extra seconds to wait for realtime template samples immediately before sending.",
+    )
+    parser.add_argument(
         "--realtime-online-style-seconds",
         type=int,
         default=900,
@@ -256,6 +325,8 @@ def main():
     parser.add_argument("--llm-style-audit-min-samples", type=int, default=llm_style_audit.DEFAULT_MIN_SAMPLES)
     parser.add_argument("--llm-style-audit-delay-multiplier", type=float, default=llm_style_audit.DEFAULT_DELAY_MULTIPLIER)
     args = parser.parse_args()
+    if args.realtime_template_payloads and not args.realtime_online_style:
+        raise SystemExit("--realtime-template-payloads requires --realtime-online-style")
 
     from live_bullet_covert import sender
 
@@ -406,6 +477,7 @@ def main():
     elif args.style_file:
         print(f"style_file={Path(args.style_file).resolve()}")
     print(f"template_payloads={bool(args.template_payloads)}")
+    print(f"realtime_template_payloads={bool(args.realtime_template_payloads)}")
     print(f"room_comments_enabled={bool(core.room_comments)} count={len(core.room_comments)}")
     print(f"payload_count={len(payloads)}")
     print(f"total_comments_with_markers={len(messages)}")
@@ -443,6 +515,34 @@ def main():
     )
 
     try:
+        if realtime_monitor is not None and args.realtime_template_payloads:
+            rebuilt = rebuild_messages_from_realtime_templates(args, realtime_monitor, sender)
+            if rebuilt is not None:
+                core, payloads, messages, rebuilt_snapshot = rebuilt
+                rebuilt_activity = rebuilt_snapshot.get("activity", {})
+                print(f"[online-style-rt] realtime_template_payloads_active=True")
+                print(f"[online-style-rt] realtime_template_samples={len(core.room_comments)}")
+                print(
+                    f"[online-style-rt] realtime_template_activity_cpm="
+                    f"{rebuilt_activity.get('comments_per_minute', 0.0):.2f}"
+                )
+                print(f"room_comments_enabled={bool(core.room_comments)} count={len(core.room_comments)}")
+                print(f"payload_count={len(payloads)}")
+                print(f"total_comments_with_markers={len(messages)}")
+                print("preview_rebuilt:")
+                for index, message in enumerate(messages[:20], 1):
+                    print(f"{index:03d}: {message}")
+                send_policy.validate_low_disturbance_send(
+                    send=args.send,
+                    room=args.room,
+                    total_comments=len(messages),
+                    max_comments=args.max_comments,
+                    sleep=send_sleep,
+                    min_sleep=args.min_sleep,
+                    confirm_authorized=args.confirm_authorized,
+                    authorized_rooms_text=args.authorized_rooms,
+                )
+
         if not args.send:
             print("dry_run=1; add --send --confirm-authorized to actually send.")
             return
