@@ -191,3 +191,45 @@ Validation:
 Result: passed. The dry-run showed `room_display_id=23087172`, `online_style_source_room=7243837`, and `effective_send_sleep=30.00`; no real send was performed.
 
 Commit: `c8d7ec8`
+
+## Test: 2026-05-23 Cross-Room Live Send Trial
+
+Files changed:
+
+- `docs/handoff/WORK_LOG.md`
+
+Purpose:
+
+- Real-platform test for cross-room learning: passively learn from room `7243837`, then send only to authorized room `23087172`.
+- Verify that learned source-room activity controls send spacing.
+
+Commands/results:
+
+```powershell
+# Receiver listener, started first.
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 'scripts\bilibili\receive_ws_decode.py' --room 23087172 --seconds 900
+
+# Trial 1: with style gate.
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 'scripts\bilibili\send_browser_cdp.py' --room 23087172 --online-style-source-room 7243837 --message 'hi#' --replicas 1 --fillers 0 --online-style-learning --online-style-stages 1 --online-style-seconds 30 --online-style-target 20 --online-style-min-samples 8 --adaptive-sleep --style-gate --sleep 10 --min-sleep 10 --page-wait 35 --warmup-count 1 --max-comments 30 --port 9342 --user-data-dir 'local_secrets\chrome_profiles\chrome_cdp_profile_23087172_humanized_demo' --send --confirm-authorized
+
+# Trial 2: pacing-only, without style-gate blocking.
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 'scripts\bilibili\send_browser_cdp.py' --room 23087172 --online-style-source-room 7243837 --message 'hi#' --replicas 1 --fillers 0 --online-style-learning --online-style-stages 1 --online-style-seconds 30 --online-style-target 20 --online-style-min-samples 8 --adaptive-sleep --sleep 10 --min-sleep 10 --page-wait 35 --warmup-count 1 --max-comments 30 --port 9342 --user-data-dir 'local_secrets\chrome_profiles\chrome_cdp_profile_23087172_humanized_demo' --send --confirm-authorized
+```
+
+Observed logs:
+
+- `runs/logs/recv_23087172_20260523_100847.log`
+- `runs/logs/send_cdp_crossroom_20260523_101053.log`
+- `runs/logs/send_cdp_crossroom_20260523_101053.err.log`
+- `runs/logs/send_cdp_crossroom_real_20260523_101338.log`
+- `runs/logs/send_cdp_crossroom_real_20260523_101338.err.log`
+
+Outcome:
+
+- Trial 1 learned `0` samples from `7243837` in 30 seconds. `style-gate` reported `status=insufficient_samples` and stopped real sending before the browser send phase.
+- Trial 2 learned `3` samples from `7243837`, `activity_cpm=5.84`, and computed `effective_send_sleep=15.00` from base sleep `10`. This confirms source-room activity controlled pacing.
+- Trial 2 targeted `room_display_id=23087172` and reported browser input detection success.
+- Trial 2 sent all `17/17` comments with `result={'ok': True}` and no stderr output.
+- Receiver observed `JOIN`, `CAL`, and `3` identifiable humanized payload comments, but did not observe `fin` or complete a final decode. Next debugging target is receiver/platform visibility for humanized payloads, not the cross-room pacing path.
+
+Commit: `PENDING`
