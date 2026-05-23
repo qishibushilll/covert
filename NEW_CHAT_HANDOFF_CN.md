@@ -611,7 +611,7 @@ pycryptodome==3.23.0
 - 真实发送测试只在用户确认的授权/测试房间进行，例如 `23087172`。
 - 浏览器发送需要 `--page-wait 35`，否则页面弹幕组件可能没准备好，早期消息会丢。
 - Windows PowerShell 直接 `Get-Content` 中文模板时可能显示乱码，这是终端编码显示问题；脚本按 UTF-8 读取即可。
-- 当前目录不是 git 仓库，`git diff --stat` 会报 “Not a git repository”，不用管。
+- 当前目录是 git 仓库，主分支为 `main`；会话迁移时优先查看本文档底部的最新章节和 `SESSION_HANDOFF.md` 底部的最新章节。
 
 ## 2026-05-20 项目目录重组
 
@@ -643,3 +643,98 @@ docs/handoff/PROJECT_RESTRUCTURE_2026-05-20.md
 ```
 
 根目录已清理：不再散放 `.py`、`.log`、`.pid` 文件。旧版本代码在 `archive/legacy_code/`，平台日志在 `runs/logs/`，cookies/Chrome profiles/keys 在 `local_secrets/`。
+
+## 2026-05-23 最新会话迁移状态：实时学习与实时模板发送
+
+当前仓库位置：
+
+```text
+D:\Study\CovLBCG
+```
+
+当前仓库是 git 仓库，主分支为 `main`。截至本次迁移记录，功能代码已经提交并推送到远端：
+
+```text
+4c3e13b Add realtime template payload rebuild
+12cf52b Record realtime monitoring commit reference
+9065558 Add realtime online style monitoring
+173c8f4 Record room 6 trial commit reference
+e9adb80 Record room 6 popular learning trial
+d6acdf2 Guard cross-room template payload sends
+```
+
+重要修正：用户指出“实时学习后发送的弹幕明显还是旧模板”。这个判断是正确的。之前的 `--realtime-online-style` 只是在后台学习房间活跃度、更新发送间隔、保存画像和提供审计基线；payload 文本在浏览器打开前就已经生成，所以不会使用浏览器等待期间实时采到的新弹幕模板。
+
+已经在 `4c3e13b` 修复并明确区分两种模式：
+
+- `--realtime-online-style`：只做实时频率/画像/审计基线学习，不改变发送文本。
+- `--realtime-template-payloads`：在浏览器页面 ready 后，等待实时样本，然后用本轮实时学到的样本重新生成 payload，并打印 `preview_rebuilt`。
+- `--realtime-template-min-samples`：重建 payload 前要求的最小实时样本数。
+- `--realtime-template-wait`：发送前额外等待实时样本的时间。
+- 真实发送时，实时模板来源房间必须等于 `--room`；跨房间实时模板实发会被拒绝。
+
+相关代码入口：
+
+```text
+src/live_bullet_covert/online_style.py
+src/live_bullet_covert/sender.py
+scripts/bilibili/send_browser_cdp.py
+scripts/bilibili/probes/full_http_sender.py
+tests/test_online_style.py
+tests/test_sender_payload_modes.py
+```
+
+验证过的 room 6 实时模板 dry-run 命令如下。注意：这个命令不带 `--send`，不会发送弹幕，只验证实时样本是否进入 `preview_rebuilt`：
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 .\scripts\bilibili\send_browser_cdp.py --room 6 --online-style-source-room 6 --message 'a#' --replicas 1 --fillers 0 --realtime-online-style --realtime-template-payloads --realtime-template-min-samples 4 --realtime-template-wait 20 --realtime-online-style-seconds 60 --online-style-target 20 --online-style-min-samples 999 --adaptive-sleep --sleep 10 --min-sleep 10 --page-wait 5 --warmup-count 1 --max-comments 30 --port 9349 --user-data-dir 'local_secrets\chrome_profiles\chrome_cdp_profile_room6_realtime_templates_dryrun'
+```
+
+该 dry-run 的关键结果：
+
+```text
+realtime_template_payloads_active=True
+realtime_template_samples=10
+preview_rebuilt 使用了本轮实时采集的 room 6 样本
+示例样本：神人、贪吃、幻视AL打T1、大树来抓一波就炸了
+没有 --send，实际发送数为 0
+9349 端口运行后为空
+```
+
+如果要继续安全实测，默认允许路径仍然是“从公开房间被动学习，只发送到授权测试房 `23087172`”：
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 .\scripts\bilibili\send_browser_cdp.py --room 23087172 --online-style-source-room 6 --message 'a#' --replicas 1 --fillers 0 --realtime-online-style --realtime-online-style-seconds 180 --adaptive-sleep --sleep 10 --min-sleep 10 --page-wait 35 --warmup-count 1 --max-comments 30 --send --confirm-authorized
+```
+
+如果要做“同房实时模板 + 真实发送”，必须使用受控/授权房间，并让 `--room` 与 `--online-style-source-room` 相同，同时显式加入授权房间列表。不要把公开热门房间 `6` 当作默认实发目标。
+
+当前安全边界和实现约束：
+
+- 不要向公开/未验证授权的热门直播间实发弹幕。
+- room `6` 可以用于被动学习和 dry-run；不要对 room `6` 做真实发送，除非后续有可验证的受控房间授权配置。
+- 真实发送必须带 `--send --confirm-authorized`，并通过 `send_policy.py` 的授权房间校验。
+- 默认授权测试房仍是 `23087172`。
+- 低扰动策略仍生效：默认最小间隔 `10s`，默认最多 `30` 条。
+- 跨房间 learned template 文件实发会被拒绝；跨房间实时模板实发也会被拒绝。
+
+本轮测试和回归已经通过：
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 -m py_compile .\src\live_bullet_covert\online_style.py .\src\live_bullet_covert\sender.py .\scripts\bilibili\send_browser_cdp.py .\scripts\bilibili\probes\full_http_sender.py .\tests\test_online_style.py .\tests\test_sender_payload_modes.py
+.\.venv\Scripts\python.exe -X utf8 .\tests\test_online_style.py
+.\.venv\Scripts\python.exe -X utf8 .\tests\test_sender_payload_modes.py
+.\.venv\Scripts\python.exe -X utf8 .\tests\offline_baseline_test.py
+```
+
+当前工作区状态提醒：
+
+```text
+main 与 origin/main 已同步到 4c3e13b。
+仍有 3 个运行样本文件未提交：
+data/profiles/online_style_profiles/room_6_comments.txt
+data/profiles/online_style_profiles/room_6_profile.json
+data/profiles/online_style_profiles/room_6_templates.txt
+```
+
+这些 `room_6_*` 是实时学习运行产生的数据变更，不属于 `4c3e13b` 的功能提交。下一轮如果需要保留最新样本，可以单独审阅后提交；如果只做代码开发，不要误把它们混进功能提交。

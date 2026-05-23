@@ -478,3 +478,117 @@ Representative transmitted humanized payload comments:
 
 This is a small-scale feasibility/demo run, not a large-scale robustness or
 undetectability proof.
+
+## 2026-05-23 realtime learning and template payload update
+
+Use this section first when resuming in a new session. The active repo is:
+
+```text
+D:\Study\CovLBCG
+```
+
+Latest pushed commits on `main`:
+
+```text
+4c3e13b Add realtime template payload rebuild
+12cf52b Record realtime monitoring commit reference
+9065558 Add realtime online style monitoring
+173c8f4 Record room 6 trial commit reference
+e9adb80 Record room 6 popular learning trial
+d6acdf2 Guard cross-room template payload sends
+```
+
+Important correction:
+
+- The first realtime implementation did not make outgoing payload text use
+  newly learned realtime samples.
+- `--realtime-online-style` starts a background listener and updates pacing,
+  audit baselines and saved source-room profiles only.
+- Payload text was still generated before room samples arrived, so it used the
+  default humanized codebook unless a style file or template mode was provided.
+
+Current fixed behavior in `4c3e13b`:
+
+- `--realtime-online-style`: realtime activity/profile monitoring only.
+- `--realtime-template-payloads`: after browser page wait, collect realtime
+  samples from the same run, rebuild payload comments from those samples, and
+  print `preview_rebuilt`.
+- `--realtime-template-min-samples`: minimum samples required for rebuild.
+- `--realtime-template-wait`: extra wait before send/dry-run to reach the
+  sample threshold.
+- Real sends with realtime template payloads are allowed only when the realtime
+  source room equals `--room`. Cross-room realtime templates are rejected for
+  real sends.
+
+Changed files:
+
+- `src/live_bullet_covert/online_style.py`
+- `src/live_bullet_covert/sender.py`
+- `scripts/bilibili/send_browser_cdp.py`
+- `scripts/bilibili/probes/full_http_sender.py`
+- `tests/test_online_style.py`
+- `tests/test_sender_payload_modes.py`
+- `README.md`
+- `docs/handoff/WORK_LOG.md`
+- `NEW_CHAT_HANDOFF_CN.md`
+- `SESSION_HANDOFF.md`
+
+Verified realtime-template dry-run, no send:
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 .\scripts\bilibili\send_browser_cdp.py --room 6 --online-style-source-room 6 --message 'a#' --replicas 1 --fillers 0 --realtime-online-style --realtime-template-payloads --realtime-template-min-samples 4 --realtime-template-wait 20 --realtime-online-style-seconds 60 --online-style-target 20 --online-style-min-samples 999 --adaptive-sleep --sleep 10 --min-sleep 10 --page-wait 5 --warmup-count 1 --max-comments 30 --port 9349 --user-data-dir 'local_secrets\chrome_profiles\chrome_cdp_profile_room6_realtime_templates_dryrun'
+```
+
+Observed result:
+
+```text
+initial preview = default humanized codebook
+realtime_template_payloads_active=True
+realtime_template_samples=10
+preview_rebuilt used current room-6 samples from the same run
+examples: 神人, 贪吃, 幻视AL打T1, 大树来抓一波就炸了
+no --send was used, so actual sends = 0
+port 9349 was free after cleanup
+```
+
+Latest safe authorized send pattern:
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 .\scripts\bilibili\send_browser_cdp.py --room 23087172 --online-style-source-room 6 --message 'a#' --replicas 1 --fillers 0 --realtime-online-style --realtime-online-style-seconds 180 --adaptive-sleep --sleep 10 --min-sleep 10 --page-wait 35 --warmup-count 1 --max-comments 30 --send --confirm-authorized
+```
+
+This uses room `6` only for passive realtime activity/style monitoring and sends
+only to the authorized test room `23087172`.
+
+Safety and policy state:
+
+- Do not send to public/unverified popular rooms. Room `6` can be used for
+  passive learning and dry-run only unless a controlled authorization setup is
+  provided and can pass the local authorized-room guard.
+- Real sends require `--send --confirm-authorized`.
+- Default authorized room: `23087172`.
+- Low-disturbance defaults: minimum sleep `10s`, maximum comments `30`.
+- Cross-room learned style files are rejected for real sends.
+- Cross-room realtime template payloads are rejected for real sends.
+
+Validation already passed:
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 -m py_compile .\src\live_bullet_covert\online_style.py .\src\live_bullet_covert\sender.py .\scripts\bilibili\send_browser_cdp.py .\scripts\bilibili\probes\full_http_sender.py .\tests\test_online_style.py .\tests\test_sender_payload_modes.py
+.\.venv\Scripts\python.exe -X utf8 .\tests\test_online_style.py
+.\.venv\Scripts\python.exe -X utf8 .\tests\test_sender_payload_modes.py
+.\.venv\Scripts\python.exe -X utf8 .\tests\offline_baseline_test.py
+```
+
+Current workspace status after pushing `4c3e13b`:
+
+```text
+main and origin/main match at 4c3e13b.
+The only remaining unstaged changes are run-generated room-6 profile data:
+data/profiles/online_style_profiles/room_6_comments.txt
+data/profiles/online_style_profiles/room_6_profile.json
+data/profiles/online_style_profiles/room_6_templates.txt
+```
+
+Do not mix those run-generated profile changes into unrelated feature commits.
+If they are needed as updated samples, review and commit them separately.
