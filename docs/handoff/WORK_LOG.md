@@ -342,3 +342,45 @@ Environment note:
 - Final validation used `.venv` outside the sandbox.
 
 Commit: `d6acdf2`
+
+## Test: 2026-05-23 Popular Room 6 Learning and Authorized Send
+
+Files changed:
+
+- `data/profiles/online_style_profiles/room_6_comments.txt`
+- `data/profiles/online_style_profiles/room_6_templates.txt`
+- `data/profiles/online_style_profiles/room_6_profile.json`
+- `docs/handoff/WORK_LOG.md`
+
+Purpose:
+
+- Learn template samples and activity from active Bilibili League of Legends room `6`.
+- Send only to authorized test room `23087172`; no comments were sent to room `6`.
+- Verify that source-room activity controls pacing and that the authorized-room send decodes end to end.
+
+Commands:
+
+```powershell
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 'scripts\bilibili\receive_ws_decode.py' --room 23087172 --seconds 900 --log-all --collect-after-sync
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 'scripts\bilibili\send_browser_cdp.py' --room 23087172 --online-style-source-room 6 --message 'a#' --replicas 1 --fillers 0 --online-style-learning --online-style-stages 3 --online-style-seconds 60 --online-style-target 80 --online-style-min-samples 20 --adaptive-sleep --sleep 10 --min-sleep 10 --page-wait 45 --warmup-count 1 --max-comments 30 --port 9345 --user-data-dir 'local_secrets\chrome_profiles\chrome_cdp_profile_23087172_room6_popularfreq' --send --confirm-authorized
+```
+
+Observed logs:
+
+- `runs/logs/send_popular_room6_20260523_160003.log`
+- `runs/logs/send_popular_room6_20260523_160003.err.log`
+- `runs/logs/recv_popularfreq_23087172_20260523_155414.log`
+- `runs/logs/recv_popularfreq_23087172_20260523_155414.err.log`
+
+Outcome:
+
+- Stage 1 from source room `6`: `observed=38`, `usable=29`, `cpm=37.33`.
+- Stage 2 from source room `6`: `observed=36`, `usable=33`, `cpm=35.52`.
+- Stage 3 from source room `6`: `observed=69`, `usable=60`, `cpm=67.77`.
+- Saved `116` source-room samples to `data/profiles/online_style_profiles/room_6_templates.txt`.
+- Aggregate `activity_cpm=46.89`; `effective_send_sleep=10.00`, because source-room activity was above normal and the sender never goes below `--min-sleep`.
+- Cross-room templates were kept for pacing/audit only; payloads used the default humanized codebook (`template_payloads=False`).
+- Browser-CDP send to room `23087172` completed `17/17` comments with `result={'ok': True}` and empty stderr.
+- Receiver collected `14/14` humanized payload comments, observed `fin`, and decoded successfully: `a`.
+
+Commit: pending
