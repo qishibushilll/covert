@@ -696,3 +696,57 @@ Observed result:
   condition would stop before sending.
 
 Commit: `d635ee6`
+
+## Update: 2026-05-24 Short Realtime Wrapper Composition
+
+Files changed:
+
+- `src/live_bullet_covert/sender.py`
+- `tests/test_sender_payload_modes.py`
+- `docs/handoff/WORK_LOG.md`
+- `SESSION_HANDOFF.md`
+- `NEW_CHAT_HANDOFF_CN.md`
+
+Root cause:
+
+- Room `6` had very high live traffic and the realtime monitor collected many
+  comments, but most current-room comments were short phrases such as
+  `刀妹入场`, `逆天`, `对的对的`, or `刀妹来了`.
+- The previous payload-wrapper filter required a single long, mostly-CJK
+  wrapper, so `40` raw realtime samples could become `0/4` usable payload
+  wrappers. Real sends correctly stopped, but the failure mode was too strict
+  for high-traffic short-comment rooms.
+
+Behavioral summary:
+
+- Added short-comment payload-wrapper composition. Short, clean CJK pieces can
+  be combined into a longer wrapper before compact carrier insertion.
+- Still rejects emoji/emote tags, long ASCII runs, pure numeric/ASCII samples,
+  and punctuation-heavy samples before they can become payload wrappers.
+- Compact insertion now prefers semantic boundary positions and limits trailing
+  fallback carrier clustering.
+
+Validation:
+
+```powershell
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 -m py_compile '.\src\live_bullet_covert\sender.py' '.\tests\test_sender_payload_modes.py' '.\scripts\bilibili\send_browser_cdp.py' '.\scripts\bilibili\probes\full_http_sender.py'
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\tests\test_sender_payload_modes.py'
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\tests\offline_baseline_test.py'
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\tests\test_online_style.py'
+```
+
+Result: passed.
+
+Room-6 dry-run, no send:
+
+```powershell
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\scripts\bilibili\send_browser_cdp.py' --room 6 --online-style-source-room 6 --message 'a#' --replicas 1 --fillers 0 --realtime-online-style --realtime-template-min-samples 4 --realtime-template-wait 5 --realtime-online-style-seconds 20 --adaptive-sleep --sleep 10 --min-sleep 10 --page-wait 10 --input-wait 30 --warmup-count 1 --max-comments 30 --port 9365 --user-data-dir 'local_secrets\chrome_profiles\chrome_cdp_profile_room6_shortwrapper_dryrun2'
+```
+
+Observed result:
+
+- `input_candidates` included the real `TEXTAREA chat-input`.
+- Realtime rebuild used `samples=35 raw_samples=40` instead of stopping at
+  `0/4`.
+- `preview_rebuilt` was printed and no comments were sent because this was a
+  dry run.

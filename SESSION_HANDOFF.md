@@ -690,3 +690,37 @@ passed the stricter filter, so no send occurred and no old-template payload was
 used.
 
 Commit containing the update: `d635ee6`.
+
+## 2026-05-24 short realtime wrapper composition
+
+The latest same-room room-6 run proved that realtime collection itself was not
+the problem:
+
+```text
+observed=1013
+saved_templates ... samples=40
+realtime usable template samples insufficient after filtering: 0/4
+```
+
+The blocker was that room `6` currently contains many short live comments. The
+previous payload-wrapper filter expected each wrapper to be long enough by
+itself, so clean short comments such as `刀妹入场`, `对的对的`, and `刀妹来了`
+were all rejected for payload use.
+
+Current fix:
+
+- Short, clean CJK realtime comments can now be composed into longer payload
+  wrappers before compact carrier insertion.
+- Emoji/emote tags, pure numeric/ASCII samples, long ASCII runs, and punctuation-
+  heavy samples are still rejected.
+- Compact carrier insertion now prefers semantic boundaries and reduces trailing
+  carrier clustering.
+- Added sender payload tests covering room-6-like short samples and full `a#`
+  round-trip decoding with `replicas=1`, `fillers=0`.
+
+Dry-run with no send confirmed realtime template rebuild now proceeds:
+
+```text
+rebuilding payloads from realtime templates: samples=35 raw_samples=40
+preview_rebuilt printed
+```

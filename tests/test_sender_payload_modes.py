@@ -20,6 +20,48 @@ REALTIME_ROOM_COMMENTS = [
     "不会玩发条阵容你选什么这把对线已经很难受了",
     "搞得像jien涅槃在wbg打得很好一样",
 ]
+SHORT_ROOM_COMMENTS = [
+    "666",
+    "刀妹入场",
+    "?",
+    "逆天",
+    "杰出",
+    "6666666666666666666666666",
+    "牢外！",
+    "对的对的",
+    "一波！",
+    "nice",
+    "好好好",
+    "来了来了，",
+    "刀妹准备进场",
+    "下一把",
+    "？",
+    "牛逼牛逼",
+    "又没人开团",
+    "难道说",
+    "赢了",
+    "不是吧",
+    "我们WBG完蛋啦",
+    "为啥不让",
+    "g",
+    "刀妹正在连接",
+    "刀妹来了",
+    "翻了",
+    "正义必胜",
+    "刀斧手何在",
+    "拿下！！！！！！",
+    "加油LGD",
+    "🚀🚀wbg.wei正在连接💃🏻💃🏻",
+    "涅槃",
+    "刀妹要啟動了",
+    "刀妹要来了",
+    "有点s了",
+    "刀斧手",
+    "帅",
+    "完了",
+    "刀妹",
+    "段",
+]
 
 
 class SenderConfig:
@@ -29,6 +71,8 @@ class SenderConfig:
             "HUMANIZED_CARRIER_ENABLED": sender.HUMANIZED_CARRIER_ENABLED,
             "COMPACT_EMBEDDING_ENABLED": sender.COMPACT_EMBEDDING_ENABLED,
             "SEMANTIC_EMBEDDING_ENABLED": sender.SEMANTIC_EMBEDDING_ENABLED,
+            "FRAGMENT_REPLICAS": sender.FRAGMENT_REPLICAS,
+            "FILLERS_PER_PAYLOAD": sender.FILLERS_PER_PAYLOAD,
             "_ROOM_COMMENT_CACHE": sender._ROOM_COMMENT_CACHE,
             "_ROOM_COMMENT_CACHE_PATH": sender._ROOM_COMMENT_CACHE_PATH,
         }
@@ -142,7 +186,48 @@ def test_payload_wrapper_filter_rejects_tags_emoji_and_long_ascii_runs():
         "涅槃要去打强队了有感觉吗",
     ]
     filtered = sender.filter_payload_wrapper_candidates(comments)
-    assert filtered == ["今天这阿萨姆打回原形了有点夸张", "涅槃要去打强队了有感觉吗"]
+    assert "今天这阿萨姆打回原形了有点夸张" in filtered
+    assert "涅槃要去打强队了有感觉吗" in filtered
+    assert all("[Ave" not in item for item in filtered)
+    assert all("🤡" not in item for item in filtered)
+    assert all("xiaohao" not in item for item in filtered)
+
+
+def test_payload_wrapper_filter_composes_short_room_comments():
+    filtered = sender.filter_payload_wrapper_candidates(SHORT_ROOM_COMMENTS)
+    assert len(filtered) >= 4
+    assert all(sender.visible_text_len(item) >= sender.MIN_ROOM_WRAPPER_LEN for item in filtered)
+    assert all("666" not in item for item in filtered)
+    assert all("nice" not in item for item in filtered)
+    assert all("🚀" not in item for item in filtered)
+
+
+def test_short_room_realtime_templates_round_trip_message():
+    decoder = receiver.CovLBCG_Decoder()
+    with SenderConfig():
+        sender.HUMANIZED_CARRIER_ENABLED = False
+        sender.COMPACT_EMBEDDING_ENABLED = True
+        sender.SEMANTIC_EMBEDDING_ENABLED = True
+        sender.FRAGMENT_REPLICAS = 1
+        sender.FILLERS_PER_PAYLOAD = 0
+        random.seed(20260524)
+        core = sender.CovLBCG_Core(room_comments=sender.filter_payload_wrapper_candidates(SHORT_ROOM_COMMENTS))
+        payloads = core.gen_payloads("a#")
+
+    assert len(payloads) == 14
+    raw_bullets = [{"c": sender.SYNC_COMMAND, "t": time.time()}]
+    raw_bullets.extend(
+        {"c": payload["c"], "t": time.time() + offset + 1}
+        for offset, payload in enumerate(payloads)
+    )
+    for payload in payloads:
+        assert payload["carrier"] == "compact"
+        assert decoder.decode_with_carrier(payload["c"], "compact")
+
+    decode_log = io.StringIO()
+    with contextlib.redirect_stdout(decode_log):
+        decoder.decode(raw_bullets)
+    assert "成功解码: a" in decode_log.getvalue()
 
 
 def test_realtime_template_payloads_avoid_trailing_four_symbol_suffix():
@@ -200,6 +285,8 @@ def main():
     test_core_can_use_realtime_room_comments_without_file()
     test_room_wrapper_filter_rejects_short_or_emoji_only_comments()
     test_payload_wrapper_filter_rejects_tags_emoji_and_long_ascii_runs()
+    test_payload_wrapper_filter_composes_short_room_comments()
+    test_short_room_realtime_templates_round_trip_message()
     test_realtime_template_payloads_avoid_trailing_four_symbol_suffix()
     test_compact_payload_does_not_split_ascii_words()
     print("[PASS] sender_payload_modes")

@@ -828,3 +828,33 @@ realtime_template_payloads=False
 - 如果高质量 wrapper 不足，例如 `2/4`，dry-run 会保留初始预览；真实 `--send` 会停止，不会发送旧模板。
 
 对应功能提交：`d635ee6`。
+
+## 2026-05-24 room 6 短弹幕实时 wrapper 修复
+
+用户提供的新日志说明：room 6 并不是没采到弹幕，而是采到了很多弹幕但过滤太严：
+
+```text
+observed=1013
+saved_templates ... samples=40
+realtime usable template samples insufficient after filtering: 0/4
+```
+
+原因：
+
+- room 6 当前大量弹幕是短句，例如 `刀妹入场`、`逆天`、`对的对的`、`刀妹来了`。
+- 旧的 payload-wrapper 过滤要求单条 wrapper 本身足够长，所以高流量短弹幕房间会被过滤成 `0/4`。
+
+已修复：
+
+- `src/live_bullet_covert/sender.py` 支持把干净短中文弹幕组合成较长 payload wrapper。
+- 仍然拒绝 emoji/表情包标签、纯数字/纯 ASCII、长 ASCII 串、标点密度异常样本。
+- compact carrier 插入更偏向语义边界，并减少尾部连续 carrier 簇。
+- `tests/test_sender_payload_modes.py` 增加了 room-6-like 短样本测试和 `a#` 完整 round-trip 测试。
+
+验证：
+
+```text
+room 6 dry-run 无发送:
+rebuilding payloads from realtime templates: samples=35 raw_samples=40
+preview_rebuilt 已打印
+```

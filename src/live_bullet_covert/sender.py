@@ -90,6 +90,7 @@ COMPACT_CARRIER_ALPHABET = "，。！？；：、～…—,."
 COMPACT_RECORD_SIZE = 4
 COMPACT_RECORD_SPACE = 100 * 2 * 100
 MIN_ROOM_WRAPPER_LEN = int(os.environ.get("COVLBCG_MIN_ROOM_WRAPPER_LEN", "12"))
+SHORT_WRAPPER_JOINERS = ("呢", "吧", "了", "啊")
 _ROOM_COMMENT_CACHE = None
 _ROOM_COMMENT_CACHE_PATH = None
 
@@ -267,6 +268,34 @@ def is_payload_wrapper_candidate(text, min_len=MIN_ROOM_WRAPPER_LEN):
     return True
 
 
+def payload_wrapper_piece_text(text):
+    clean = normalize_room_comment(text)
+    stripped = remove_carrier_chars_for_wrapper(clean)
+    return re.sub(r"\s+", "", stripped)
+
+
+def is_payload_wrapper_piece(text):
+    clean = normalize_room_comment(text)
+    stripped = payload_wrapper_piece_text(clean)
+    if has_emoji_or_symbol_tag(clean):
+        return False
+    if visible_text_len(stripped) < 2:
+        return False
+    if cjk_count(stripped) < 2:
+        return False
+    if cjk_count(stripped) / max(1, visible_text_len(stripped)) < 0.55:
+        return False
+    runs = ascii_word_runs(stripped)
+    if any(len(run) > 3 for run in runs):
+        return False
+    if sum(len(run) for run in runs) > 4:
+        return False
+    carrier_count = sum(1 for char in clean if char in COMPACT_CARRIER_ALPHABET)
+    if carrier_count > max(2, visible_text_len(stripped)):
+        return False
+    return True
+
+
 def filter_room_wrapper_candidates(comments, min_len=MIN_ROOM_WRAPPER_LEN):
     filtered = []
     seen = set()
@@ -284,6 +313,41 @@ def filter_room_wrapper_candidates(comments, min_len=MIN_ROOM_WRAPPER_LEN):
     return filtered
 
 
+def compose_short_payload_wrappers(comments, min_len=MIN_ROOM_WRAPPER_LEN):
+    pieces = []
+    seen = set()
+    for item in comments or []:
+        if not is_payload_wrapper_piece(item):
+            continue
+        piece = payload_wrapper_piece_text(item)
+        if piece in seen:
+            continue
+        seen.add(piece)
+        pieces.append(piece)
+
+    wrappers = []
+    seen_wrappers = set()
+    max_wrapper_len = max(min_len, MAX_COMMENT_LENGTH - COMPACT_RECORD_SIZE)
+    for start in range(len(pieces)):
+        combined = ""
+        for offset, piece in enumerate(pieces[start : start + 6]):
+            joiner = "" if piece[-1:] in SEMANTIC_BOUNDARY_CHARS else SHORT_WRAPPER_JOINERS[
+                (start + offset) % len(SHORT_WRAPPER_JOINERS)
+            ]
+            addition = f"{piece}{joiner}"
+            if visible_text_len(combined) + visible_text_len(addition) > max_wrapper_len:
+                break
+            combined += addition
+            if visible_text_len(combined) < min_len:
+                continue
+            if combined in seen_wrappers:
+                break
+            seen_wrappers.add(combined)
+            wrappers.append(combined)
+            break
+    return wrappers
+
+
 def filter_payload_wrapper_candidates(comments, min_len=MIN_ROOM_WRAPPER_LEN):
     filtered = []
     seen = set()
@@ -291,6 +355,12 @@ def filter_payload_wrapper_candidates(comments, min_len=MIN_ROOM_WRAPPER_LEN):
         clean = normalize_room_comment(item)
         if not is_payload_wrapper_candidate(clean, min_len=min_len):
             continue
+        stripped = strip_carrier_chars(clean)
+        if stripped in seen:
+            continue
+        seen.add(stripped)
+        filtered.append(clean)
+    for clean in compose_short_payload_wrappers(comments, min_len=min_len):
         stripped = strip_carrier_chars(clean)
         if stripped in seen:
             continue
@@ -676,15 +746,6 @@ class CovLBCG_Core:
             if char in SEMANTIC_BOUNDARY_CHARS and index < len(wrapper):
                 candidates.add(index)
 
-        for index, char in enumerate(wrapper[:-1], 1):
-            next_char = wrapper[index]
-            if char in "，。！？；：、～…—,.!?":
-                continue
-            if is_ascii_word_char(char) and is_ascii_word_char(next_char):
-                continue
-            if index >= 4 and index <= len(wrapper) - 3:
-                candidates.add(index)
-
         ordered = sorted(pos for pos in candidates if 1 < pos <= len(wrapper))
         if len(ordered) >= carrier_count:
             return sorted(random.sample(ordered, carrier_count))
@@ -692,6 +753,9 @@ class CovLBCG_Core:
             return ordered
 
         positions = ordered[:]
+        end_slots = min(1, carrier_count - len(positions))
+        if end_slots > 0:
+            positions.extend([len(wrapper)] * end_slots)
         if len(wrapper) >= carrier_count + 4:
             low = 3
             high = len(wrapper) - 2
@@ -781,7 +845,7 @@ class CovLBCG_Core:
             score = abs(len(clean) - target_wrapper_len)
             if COMPACT_EMBEDDING_ENABLED and SEMANTIC_EMBEDDING_ENABLED:
                 natural_slots = len(self.semantic_carrier_positions(clean, carrier_len, allow_fallback=False))
-                score += max(0, 2 - natural_slots) * 0.75
+                score += max(0, carrier_len - natural_slots) * 2.0
             score -= min(8, visible_text_len(clean) / 8)
             scored.append((score, random.random(), clean))
 
