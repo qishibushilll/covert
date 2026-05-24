@@ -800,3 +800,29 @@ live chat input not found
 已用无发送 dry-run 验证：`--room 6` 实际导航到 `7734200`，并检测到 iframe 里的 `TEXTAREA.chat-input border-box`。
 
 对应修复提交：`12ff6bf`。
+
+## 2026-05-24 同房实时学习自动重建 payload
+
+用户这次运行的命令只有 `--realtime-online-style`，没有
+`--realtime-template-payloads`，日志里也明确显示：
+
+```text
+realtime_template_payloads=False
+```
+
+所以发送文本仍然是内置旧模板，这是“看起来没有实时学习”的直接原因。接收端截图里一直是 `carrier=unknown code=`，也符合这次发送没有形成可识别实时模板 payload 序列的现象。
+
+已修复：
+
+- 同房间实时学习时，`--realtime-online-style` 会自动启用实时模板 payload 重建，不再要求用户额外记住 `--realtime-template-payloads`。
+- 默认要求 `4` 条高质量 payload wrapper，默认等待 `60` 秒。
+- 重建时等待的是“过滤后的可用 wrapper”，不是 raw 弹幕数。
+- 发送用 wrapper 过滤比保存画像更严格：拒绝过短弹幕、emoji、表情包标签、长英文串和标点/载体密度异常样本。
+- 如果可用 wrapper 不足，真实发送会停止，不会回退发旧模板。
+- compact 载体插入会避免切开英文/数字串，并在去掉原标点时保留词边界，减少 `edgLPL` 这类黏连。
+
+验证过的无发送 dry-run：
+
+- 输出 `auto-enabled realtime template payload rebuild for same-room realtime learning`。
+- `realtime_template_payloads=True`。
+- 如果高质量 wrapper 不足，例如 `2/4`，dry-run 会保留初始预览；真实 `--send` 会停止，不会发送旧模板。

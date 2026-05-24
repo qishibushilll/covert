@@ -658,3 +658,33 @@ and `input_candidates` included `TEXTAREA chat-input border-box` with
 `is_chat_input=True`.
 
 Commit containing the update: `12ff6bf`.
+
+## 2026-05-24 auto same-room realtime payload update
+
+The user ran:
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 .\scripts\bilibili\send_browser_cdp.py --room 6 --online-style-source-room 6 --message 'a#' --replicas 1 --fillers 0 --realtime-online-style --realtime-online-style-seconds 180 --adaptive-sleep --sleep 10 --min-sleep 10 --page-wait 35 --warmup-count 1 --max-comments 30 --send --confirm-authorized
+```
+
+and reported that sends still used old templates and the receiver did not
+decode. The log showed `realtime_template_payloads=False`, so the sender was
+only doing realtime activity learning, not realtime payload-text rebuild.
+
+Current fix:
+
+- Same-room `--realtime-online-style` now automatically enables realtime
+  template payload rebuilds.
+- Defaults: `realtime_template_min_samples=4`,
+  `realtime_template_wait=60`.
+- Rebuild waits for usable payload wrappers after filtering, not only raw
+  comments.
+- Payload wrapper filtering rejects emoji/emote tags, long ASCII runs, very
+  short comments and punctuation-heavy samples.
+- If usable wrappers are insufficient, real sends stop instead of falling back
+  to old built-in templates.
+
+Dry-run confirmed the auto-enable path prints the auto-enable message and
+`realtime_template_payloads=True`. In one room-6 dry-run only `2/4` wrappers
+passed the stricter filter, so no send occurred and no old-template payload was
+used.

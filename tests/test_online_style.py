@@ -1,4 +1,25 @@
+import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 from live_bullet_covert import online_style
+
+
+class Args:
+    def __init__(
+        self,
+        realtime_online_style=True,
+        realtime_template_payloads=False,
+        room=6,
+        online_style_source_room=None,
+    ):
+        self.realtime_online_style = realtime_online_style
+        self.realtime_template_payloads = realtime_template_payloads
+        self.room = room
+        self.online_style_source_room = online_style_source_room
 
 
 def test_resolve_source_room_defaults_to_send_room():
@@ -92,6 +113,30 @@ def test_same_room_realtime_templates_allowed_for_real_send():
     )
 
 
+def test_browser_sender_auto_enables_same_room_realtime_templates():
+    from scripts.bilibili import send_browser_cdp
+
+    args = Args(room=6, online_style_source_room=6)
+    send_browser_cdp.enable_realtime_template_payloads_by_default(args)
+    assert args.realtime_template_payloads
+
+
+def test_browser_sender_does_not_auto_enable_cross_room_realtime_templates():
+    from scripts.bilibili import send_browser_cdp
+
+    args = Args(room=23087172, online_style_source_room=6)
+    send_browser_cdp.enable_realtime_template_payloads_by_default(args)
+    assert not args.realtime_template_payloads
+
+
+def test_http_sender_auto_enables_same_room_realtime_templates():
+    from scripts.bilibili.probes import full_http_sender
+
+    args = Args(room=6, online_style_source_room=6)
+    full_http_sender.enable_realtime_template_payloads_by_default(args)
+    assert args.realtime_template_payloads
+
+
 def test_realtime_monitor_uses_default_cpm_before_samples():
     monitor = online_style.RealtimeStyleMonitor(room_display_id=6, default_cpm=20.0)
     monitor.started_at = 100.0
@@ -163,6 +208,9 @@ def main():
     test_same_room_style_file_allowed_for_real_send()
     test_cross_room_realtime_templates_are_rejected_for_real_send()
     test_same_room_realtime_templates_allowed_for_real_send()
+    test_browser_sender_auto_enables_same_room_realtime_templates()
+    test_browser_sender_does_not_auto_enable_cross_room_realtime_templates()
+    test_http_sender_auto_enables_same_room_realtime_templates()
     test_realtime_monitor_uses_default_cpm_before_samples()
     test_realtime_monitor_records_unique_clean_comments()
     test_realtime_monitor_wait_for_samples_returns_when_ready()

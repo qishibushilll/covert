@@ -98,19 +98,21 @@ sleep values from the latest observed CPM:
 .\.venv\Scripts\python.exe -X utf8 .\scripts\bilibili\send_browser_cdp.py --room 23087172 --online-style-source-room 6 --message 'hi#' --replicas 1 --fillers 0 --realtime-online-style --realtime-online-style-seconds 900 --adaptive-sleep --sleep 10 --min-sleep 10 --max-comments 30
 ```
 
-Realtime monitoring does not change payload text by itself. By default it only
-updates activity pacing, style-gate baselines, LLM-audit baselines, and saved
-source-room profiles. To rebuild payload comments from samples learned during
-the same run, add `--realtime-template-payloads`; the browser sender rebuilds
-the payload queue after the page wait and prints `preview_rebuilt`. Real sends
-with realtime template payloads are allowed only when the realtime source room
-matches `--room`.
+Realtime monitoring changes payload text only for same-room realtime runs. When
+`--realtime-online-style` learns from the same room as `--room`, the browser
+sender automatically enables realtime template payload rebuilds, waits for
+usable samples, and prints `preview_rebuilt` before dry-run/send. Cross-room
+realtime monitoring still updates only activity pacing, style-gate baselines,
+LLM-audit baselines, and saved source-room profiles. Real sends with realtime
+template payloads are allowed only when the realtime source room matches
+`--room`.
 
 Realtime template payloads are filtered before use. Very short comments,
-emoji-only comments, and samples dominated by carrier punctuation are rejected,
-so the sender does not build payloads like a short phrase followed by four
-symbols. If too few usable realtime samples remain, real sends stop instead of
-silently falling back to an unnatural preview.
+emoji-only comments, bracketed emote tags, long ASCII runs, and samples
+dominated by carrier punctuation are rejected, so the sender does not build
+payloads like a short phrase followed by four symbols or compact carriers inside
+emote tags. If too few usable realtime samples remain, real sends stop instead
+of silently falling back to an old or unnatural preview.
 
 The browser sender also refuses real sends unless a visible live-chat input is
 found. If `input_candidates` only contains a search box such as

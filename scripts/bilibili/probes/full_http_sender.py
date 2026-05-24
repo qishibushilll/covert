@@ -156,6 +156,20 @@ def realtime_snapshot(monitor):
     return snapshot
 
 
+def enable_realtime_template_payloads_by_default(args):
+    if not args.realtime_online_style or args.realtime_template_payloads:
+        return
+    source_room = online_style.resolve_source_room(args.room, args.online_style_source_room)
+    if not online_style.is_same_room(args.room, source_room):
+        return
+    args.realtime_template_payloads = True
+    print(
+        "[online-style-rt] auto-enabled realtime template payload rebuild "
+        "for same-room realtime learning",
+        flush=True,
+    )
+
+
 def current_send_sleep(args, realtime_monitor, base_send_sleep):
     if realtime_monitor is not None and args.adaptive_sleep:
         snapshot = realtime_monitor.snapshot()
@@ -185,12 +199,19 @@ def rebuild_messages_from_realtime_templates(args, monitor, sender):
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
 
+    deadline = time.time() + max(0.0, args.realtime_template_wait)
     snapshot = monitor.wait_for_samples(
         args.realtime_template_min_samples,
-        timeout=args.realtime_template_wait,
+        timeout=min(1.0, max(0.0, args.realtime_template_wait)),
     )
     comments = snapshot.get("comments") or []
-    usable_comments = sender.filter_room_wrapper_candidates(comments)
+    usable_comments = sender.filter_payload_wrapper_candidates(comments)
+    while len(usable_comments) < args.realtime_template_min_samples and time.time() < deadline:
+        time.sleep(1.0)
+        snapshot = monitor.snapshot()
+        comments = snapshot.get("comments") or []
+        usable_comments = sender.filter_payload_wrapper_candidates(comments)
+
     if len(comments) < args.realtime_template_min_samples:
         message = (
             "[online-style-rt] realtime template samples insufficient: "
@@ -293,13 +314,13 @@ def main():
     parser.add_argument(
         "--realtime-template-min-samples",
         type=int,
-        default=online_style.DEFAULT_ONLINE_STYLE_MIN_SAMPLES,
+        default=online_style.DEFAULT_REALTIME_TEMPLATE_MIN_SAMPLES,
         help="Minimum realtime samples required before rebuilding payloads from learned templates.",
     )
     parser.add_argument(
         "--realtime-template-wait",
         type=float,
-        default=0.0,
+        default=online_style.DEFAULT_REALTIME_TEMPLATE_WAIT,
         help="Extra seconds to wait for realtime template samples immediately before sending.",
     )
     parser.add_argument(
@@ -336,6 +357,7 @@ def main():
     parser.add_argument("--llm-style-audit-min-samples", type=int, default=llm_style_audit.DEFAULT_MIN_SAMPLES)
     parser.add_argument("--llm-style-audit-delay-multiplier", type=float, default=llm_style_audit.DEFAULT_DELAY_MULTIPLIER)
     args = parser.parse_args()
+    enable_realtime_template_payloads_by_default(args)
     if args.realtime_template_payloads and not args.realtime_online_style:
         raise SystemExit("--realtime-template-payloads requires --realtime-online-style")
 

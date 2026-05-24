@@ -4,6 +4,7 @@ import sys
 import json
 import os
 import re
+import unicodedata
 from pathlib import Path
 from decimal import Decimal, getcontext
 import base64
@@ -81,14 +82,14 @@ ROOM_COMMENTS_FILE = os.environ.get(
     "COVLBCG_ROOM_COMMENTS_FILE",
     str(PROJECT_ROOT / "data" / "room_comments.txt"),
 )
-MAX_COMMENT_LENGTH = int(os.environ.get("COVLBCG_MAX_COMMENT_LENGTH", "20"))
+MAX_COMMENT_LENGTH = int(os.environ.get("COVLBCG_MAX_COMMENT_LENGTH", "40"))
 COMPACT_EMBEDDING_ENABLED = os.environ.get("COVLBCG_COMPACT_EMBEDDING", "1") != "0"
 SEMANTIC_EMBEDDING_ENABLED = os.environ.get("COVLBCG_SEMANTIC_EMBEDDING", "1") != "0"
 HUMANIZED_CARRIER_ENABLED = os.environ.get("COVLBCG_HUMANIZED_CARRIER", "1") != "0"
 COMPACT_CARRIER_ALPHABET = "，。！？；：、～…—,."
 COMPACT_RECORD_SIZE = 4
 COMPACT_RECORD_SPACE = 100 * 2 * 100
-MIN_ROOM_WRAPPER_LEN = 16
+MIN_ROOM_WRAPPER_LEN = int(os.environ.get("COVLBCG_MIN_ROOM_WRAPPER_LEN", "12"))
 _ROOM_COMMENT_CACHE = None
 _ROOM_COMMENT_CACHE_PATH = None
 
@@ -204,6 +205,37 @@ def visible_text_len(text):
     return sum(1 for char in str(text) if char not in ALL_CARRIER_CHARS and not char.isspace())
 
 
+def remove_carrier_chars_for_wrapper(text):
+    """Remove carrier punctuation while preserving rough word boundaries."""
+    cleaned = ''.join(' ' if char in ALL_CARRIER_CHARS else char for char in str(text))
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def is_ascii_word_char(char):
+    return bool(re.match(r"[A-Za-z0-9_]", char or ""))
+
+
+def cjk_count(text):
+    return sum(1 for char in str(text) if "\u4e00" <= char <= "\u9fff")
+
+
+def ascii_word_runs(text):
+    return re.findall(r"[A-Za-z0-9_]+", str(text))
+
+
+def has_emoji_or_symbol_tag(text):
+    text = str(text)
+    if re.search(r"\[[^\]]{1,24}\]", text):
+        return True
+    for char in text:
+        codepoint = ord(char)
+        if 0x1F000 <= codepoint <= 0x1FAFF:
+            return True
+        if unicodedata.category(char) in {"So", "Sk"} and char not in set(SYMBOL_MAP.values()):
+            return True
+    return False
+
+
 def is_room_wrapper_candidate(text, min_len=MIN_ROOM_WRAPPER_LEN):
     clean = strip_carrier_chars(normalize_room_comment(text))
     if visible_text_len(clean) < min_len:
@@ -212,6 +244,25 @@ def is_room_wrapper_candidate(text, min_len=MIN_ROOM_WRAPPER_LEN):
         return False
     carrier_count = sum(1 for char in str(text) if char in COMPACT_CARRIER_ALPHABET)
     if carrier_count > max(2, len(clean) // 3):
+        return False
+    return True
+
+
+def is_payload_wrapper_candidate(text, min_len=MIN_ROOM_WRAPPER_LEN):
+    clean = normalize_room_comment(text)
+    if not is_room_wrapper_candidate(clean, min_len=min_len):
+        return False
+    stripped = strip_carrier_chars(clean)
+    if has_emoji_or_symbol_tag(clean):
+        return False
+    if cjk_count(stripped) < min_len:
+        return False
+    if cjk_count(stripped) / max(1, visible_text_len(stripped)) < 0.65:
+        return False
+    runs = ascii_word_runs(stripped)
+    if any(len(run) > 3 for run in runs):
+        return False
+    if sum(len(run) for run in runs) > 6:
         return False
     return True
 
@@ -226,6 +277,21 @@ def filter_room_wrapper_candidates(comments, min_len=MIN_ROOM_WRAPPER_LEN):
         stripped = strip_carrier_chars(clean)
         if visible_text_len(stripped) < min_len:
             continue
+        if stripped in seen:
+            continue
+        seen.add(stripped)
+        filtered.append(clean)
+    return filtered
+
+
+def filter_payload_wrapper_candidates(comments, min_len=MIN_ROOM_WRAPPER_LEN):
+    filtered = []
+    seen = set()
+    for item in comments or []:
+        clean = normalize_room_comment(item)
+        if not is_payload_wrapper_candidate(clean, min_len=min_len):
+            continue
+        stripped = strip_carrier_chars(clean)
         if stripped in seen:
             continue
         seen.add(stripped)
@@ -250,7 +316,7 @@ def trailing_compact_carrier_count(text):
 def compact_payload_natural_enough(text, carrier_len=COMPACT_RECORD_SIZE):
     visible_len = visible_text_len(text)
     carrier_count = compact_carrier_count(text)
-    if visible_len < max(MIN_ROOM_WRAPPER_LEN, carrier_len * 4):
+    if visible_len < max(MIN_ROOM_WRAPPER_LEN, carrier_len * 2):
         return False
     if carrier_count > max(carrier_len, visible_len // 4):
         return False
@@ -610,6 +676,15 @@ class CovLBCG_Core:
             if char in SEMANTIC_BOUNDARY_CHARS and index < len(wrapper):
                 candidates.add(index)
 
+        for index, char in enumerate(wrapper[:-1], 1):
+            next_char = wrapper[index]
+            if char in "，。！？；：、～…—,.!?":
+                continue
+            if is_ascii_word_char(char) and is_ascii_word_char(next_char):
+                continue
+            if index >= 4 and index <= len(wrapper) - 3:
+                candidates.add(index)
+
         ordered = sorted(pos for pos in candidates if 1 < pos <= len(wrapper))
         if len(ordered) >= carrier_count:
             return sorted(random.sample(ordered, carrier_count))
@@ -618,8 +693,17 @@ class CovLBCG_Core:
 
         positions = ordered[:]
         if len(wrapper) >= carrier_count + 4:
-            low = 2
-            high = len(wrapper) - 1
+            low = 3
+            high = len(wrapper) - 2
+            available_for_spread = [
+                pos
+                for pos in range(low, high + 1)
+                if not (
+                    is_ascii_word_char(wrapper[pos - 1])
+                    and pos < len(wrapper)
+                    and is_ascii_word_char(wrapper[pos])
+                )
+            ]
             spread = {
                 max(low, min(high, round((index + 1) * len(wrapper) / (carrier_count + 1))))
                 for index in range(carrier_count)
@@ -627,10 +711,12 @@ class CovLBCG_Core:
             for pos in sorted(spread):
                 if len(positions) >= carrier_count:
                     break
+                if pos not in available_for_spread:
+                    continue
                 if pos in positions:
                     continue
                 positions.append(pos)
-            available = [pos for pos in range(low, high + 1) if pos not in positions]
+            available = [pos for pos in available_for_spread if pos not in positions]
             while len(positions) < carrier_count and available:
                 choice = random.choice(available)
                 positions.append(choice)
@@ -641,7 +727,7 @@ class CovLBCG_Core:
 
     def embed_compact_carrier(self, wrapper, carrier_code):
         """把紧凑载体分散进文本内部，避免固定尾部连续载体模式。"""
-        wrapper = strip_carrier_chars(wrapper) or "主播加油"
+        wrapper = remove_carrier_chars_for_wrapper(wrapper) or "主播加油"
         max_wrapper_len = max(MIN_ROOM_WRAPPER_LEN, MAX_COMMENT_LENGTH - len(carrier_code))
         wrapper = wrapper[:max_wrapper_len]
         if not wrapper:
@@ -678,7 +764,7 @@ class CovLBCG_Core:
             return template.format(suffix)[:max_wrapper_len]
 
         # 让“外壳 + 载体码”的长度贴近当前房间弹幕长度中位附近。
-        candidate_comments = filter_room_wrapper_candidates(self.room_comments)
+        candidate_comments = filter_payload_wrapper_candidates(self.room_comments)
         if not candidate_comments:
             return random.choice(CARRIER_TEMPLATES).format(random.choice(PAYLOAD_SUFFIXES))[:max_wrapper_len]
 

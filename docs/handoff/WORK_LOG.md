@@ -493,6 +493,7 @@ Files changed:
 - `src/live_bullet_covert/sender.py`
 - `scripts/bilibili/send_browser_cdp.py`
 - `scripts/bilibili/probes/full_http_sender.py`
+- `tests/test_online_style.py`
 - `tests/test_sender_payload_modes.py`
 - `README.md`
 - `docs/handoff/WORK_LOG.md`
@@ -625,3 +626,71 @@ Observed result:
   were only `3/4` in that short sampling window.
 
 Commit: `12ff6bf`
+
+## Update: 2026-05-24 Auto Same-Room Realtime Payload Rebuild
+
+Files changed:
+
+- `src/live_bullet_covert/online_style.py`
+- `src/live_bullet_covert/sender.py`
+- `scripts/bilibili/send_browser_cdp.py`
+- `scripts/bilibili/probes/full_http_sender.py`
+- `tests/test_sender_payload_modes.py`
+- `README.md`
+- `docs/handoff/WORK_LOG.md`
+- `NEW_CHAT_HANDOFF_CN.md`
+- `SESSION_HANDOFF.md`
+
+Root cause of the latest user report:
+
+- The user command included `--realtime-online-style` but did not include
+  `--realtime-template-payloads`.
+- The log explicitly showed `realtime_template_payloads=False`, so outgoing
+  payload text used the built-in humanized codebook and looked like the old
+  templates.
+- Receiver logs with `carrier=unknown code=` were consistent with the visible
+  stream not carrying a recognizable payload sequence from that old-template
+  run.
+
+Behavioral summary:
+
+- Browser and HTTP senders now auto-enable realtime template payload rebuilds
+  when `--realtime-online-style` learns from the same room as `--room`.
+- Default realtime template threshold is now `4` high-quality payload wrappers,
+  with a default wait of `60` seconds.
+- Rebuild now waits for usable payload wrappers after filtering, not only raw
+  realtime comments.
+- Payload-wrapper filtering is stricter than profile saving: it rejects very
+  short comments, emoji/emote-tag comments, long ASCII runs, and punctuation-
+  heavy samples before they can become payload wrappers.
+- If not enough usable wrappers are available, real sends stop instead of
+  falling back to the old built-in preview.
+- Compact carrier insertion avoids splitting ASCII words and preserves word
+  boundaries when removing existing punctuation.
+
+Validation:
+
+```powershell
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 -m py_compile '.\src\live_bullet_covert\online_style.py' '.\src\live_bullet_covert\sender.py' '.\scripts\bilibili\send_browser_cdp.py' '.\scripts\bilibili\probes\full_http_sender.py' '.\tests\test_sender_payload_modes.py' '.\tests\test_online_style.py'
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\tests\test_sender_payload_modes.py'
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\tests\offline_baseline_test.py'
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\tests\test_online_style.py'
+```
+
+Result: passed.
+
+Room-6 dry-run, no send:
+
+```powershell
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\scripts\bilibili\send_browser_cdp.py' --room 6 --online-style-source-room 6 --message 'a#' --replicas 1 --fillers 0 --realtime-online-style --realtime-online-style-seconds 60 --adaptive-sleep --sleep 10 --min-sleep 10 --page-wait 10 --input-wait 20 --warmup-count 1 --max-comments 30 --port 9362 --user-data-dir 'local_secrets\chrome_profiles\chrome_cdp_profile_room6_auto_realtime_template_dryrun4'
+```
+
+Observed result:
+
+- Auto-enable message printed:
+  `auto-enabled realtime template payload rebuild for same-room realtime learning`.
+- `realtime_template_payloads=True`.
+- The sender no longer silently used the old template payloads.
+- In that short dry-run only `2/4` high-quality payload wrappers survived the
+  stricter filter, so dry-run kept the initial preview. With `--send`, the same
+  condition would stop before sending.
