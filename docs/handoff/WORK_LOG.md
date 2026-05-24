@@ -694,3 +694,5 @@ Observed result:
 - In that short dry-run only `2/4` high-quality payload wrappers survived the
   stricter filter, so dry-run kept the initial preview. With `--send`, the same
   condition would stop before sending.
+
+Commit: `d635ee6`

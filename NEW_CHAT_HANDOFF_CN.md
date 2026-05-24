@@ -826,3 +826,5 @@ realtime_template_payloads=False
 - 输出 `auto-enabled realtime template payload rebuild for same-room realtime learning`。
 - `realtime_template_payloads=True`。
 - 如果高质量 wrapper 不足，例如 `2/4`，dry-run 会保留初始预览；真实 `--send` 会停止，不会发送旧模板。
+
+对应功能提交：`d635ee6`。

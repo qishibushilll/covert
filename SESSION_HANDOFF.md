@@ -688,3 +688,5 @@ Dry-run confirmed the auto-enable path prints the auto-enable message and
 `realtime_template_payloads=True`. In one room-6 dry-run only `2/4` wrappers
 passed the stricter filter, so no send occurred and no old-template payload was
 used.
+
+Commit containing the update: `d635ee6`.
