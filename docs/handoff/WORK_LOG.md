@@ -752,3 +752,46 @@ Observed result:
   dry run.
 
 Commit: `09c52f2`
+
+## Update: 2026-05-24 Receiver Auto-Decode Without FIN
+
+Files changed:
+
+- `src/live_bullet_covert/receiver.py`
+- `scripts/bilibili/receive_ws_decode.py`
+- `tests/test_receiver_realtime_compact.py`
+- `docs/handoff/WORK_LOG.md`
+- `SESSION_HANDOFF.md`
+- `NEW_CHAT_HANDOFF_CN.md`
+
+Root cause:
+
+- In the same-room room-6 run, the browser sender reported `17/17 ok=True`,
+  including `CAL`, `14` payload comments, and `fin`.
+- The receiver did not reach final decode because it only decoded when `fin`
+  was observed. In a high-traffic/filtering room, `fin` can be missed or not
+  rebroadcast to the WebSocket listener.
+- Ordinary public comments can also look like compact carrier records when they
+  contain four carrier punctuation marks, e.g. `反你的野!!!!!` producing a high
+  false-positive sequence such as `22222`.
+
+Behavioral summary:
+
+- `receive_ws_decode.py` now has `--auto-decode-records` with default `14`.
+  After `CAL`, once enough encoded records are collected, the receiver attempts
+  decode without waiting for `fin`.
+- `receiver.CovLBCG_Decoder` now rebuilds only contiguous protocol sequences
+  starting from sequence `0`; high-sequence false positives from ordinary
+  comments are ignored instead of polluting seed/key extraction.
+
+Validation:
+
+```powershell
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 -m py_compile '.\src\live_bullet_covert\receiver.py' '.\scripts\bilibili\receive_ws_decode.py' '.\tests\test_receiver_realtime_compact.py'
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\tests\test_receiver_realtime_compact.py'
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\tests\test_receiver_humanized.py'
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\tests\offline_baseline_test.py'
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\tests\test_sender_payload_modes.py'
+```
+
+Result: passed.

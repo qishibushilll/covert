@@ -726,3 +726,29 @@ preview_rebuilt printed
 ```
 
 Commit containing the update: `09c52f2`.
+
+## 2026-05-24 receiver auto-decode without fin
+
+The user then showed a real same-room room-6 send where the browser sender
+reported `17/17 ok=True`, including `CAL`, all payload comments, and `fin`, but
+the receiver window did not print a final decode.
+
+Diagnosis:
+
+- The receiver only decoded when it observed `fin`.
+- In room `6`, `fin` can be missed or filtered even when the browser sender
+  reports the page input accepted it.
+- The receiver was also collecting occasional false-positive compact records
+  from ordinary comments with repeated punctuation, such as `反你的野!!!!!`
+  producing `code=22222`.
+
+Current fix:
+
+- `scripts/bilibili/receive_ws_decode.py` now auto-attempts decoding after
+  `--auto-decode-records` encoded records after `CAL`; default is `14` for the
+  current `a#`, `replicas=1`, `fillers=0` test path.
+- `src/live_bullet_covert/receiver.py` now rebuilds only contiguous protocol
+  sequences starting at `0`, so high-sequence false positives are ignored.
+- Added `tests/test_receiver_realtime_compact.py` using the user's actual
+  realtime compact payloads, with no `fin`, plus one high-sequence false
+  positive before the payloads. Both decode to `a`.

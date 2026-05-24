@@ -481,7 +481,8 @@ class CovLBCG_Decoder:
 
             rebuilt_parts = []
             missing_sequences = 0
-            for seq in sorted(clusters):
+            seq = 0
+            while seq in clusters:
                 fragments = []
                 for frag_idx in range(PROTOCOL_CODE_SIZE // PROTOCOL_FRAGMENT_SIZE):
                     votes = clusters[seq].get(frag_idx, [])
@@ -493,9 +494,16 @@ class CovLBCG_Decoder:
                     rebuilt_parts.append(''.join(fragments))
                 else:
                     missing_sequences += 1
+                    break
+                seq += 1
+
+            ignored_sequences = len([item for item in clusters if item >= seq])
 
             parts = rebuilt_parts
-            print(f"[解密流程] 序号化片段重组完成，共重组 {len(parts)} 个4位编码，缺失序号 {missing_sequences} 个")
+            print(
+                f"[解密流程] 序号化片段重组完成，共重组 {len(parts)} 个4位编码，"
+                f"缺失序号 {missing_sequences} 个，忽略非连续序号 {ignored_sequences} 个"
+            )
         elif any(len(part) < PROTOCOL_CODE_SIZE for part in parts):
             fragments = parts
             parts = []

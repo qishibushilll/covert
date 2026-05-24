@@ -860,3 +860,24 @@ preview_rebuilt 已打印
 ```
 
 对应功能提交：`09c52f2`。
+
+## 2026-05-24 接收端不等 fin 自动解码
+
+用户随后提供真实发送日志：发送端 `17/17 ok=True`，包括 `CAL`、14 条 payload 和
+`fin`，但接收端没有最终解码。
+
+判断：
+
+- 接收端旧逻辑只在看到 `fin` 时才调用 decode。
+- room 6 高流量/过滤环境下，`fin` 可能没有被 WebSocket 接收端看到。
+- 普通弹幕中连续标点也会误判成 compact carrier，例如 `反你的野!!!!!`
+  可能得到 `code=22222`，这类高序号假片段会干扰旧的密钥提取。
+
+已修复：
+
+- `scripts/bilibili/receive_ws_decode.py` 新增 `--auto-decode-records`，默认 `14`。
+  在 `CAL` 后累计到足够 encoded records 时自动尝试解码，不再必须等 `fin`。
+- `src/live_bullet_covert/receiver.py` 只重组从序号 `0` 开始连续的协议片段，
+  忽略普通弹幕造成的高序号 false positive。
+- 新增 `tests/test_receiver_realtime_compact.py`，使用用户这次实际发送日志里的
+  14 条 compact payload；不带 `fin` 也能解出 `a`，混入 `反你的野!!!!!` 也能解。
