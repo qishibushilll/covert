@@ -858,3 +858,5 @@ room 6 dry-run 无发送:
 rebuilding payloads from realtime templates: samples=35 raw_samples=40
 preview_rebuilt 已打印
 ```
+
+对应功能提交：`09c52f2`。

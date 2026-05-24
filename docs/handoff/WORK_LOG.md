@@ -750,3 +750,5 @@ Observed result:
   `0/4`.
 - `preview_rebuilt` was printed and no comments were sent because this was a
   dry run.
+
+Commit: `09c52f2`

@@ -724,3 +724,5 @@ Dry-run with no send confirmed realtime template rebuild now proceeds:
 rebuilding payloads from realtime templates: samples=35 raw_samples=40
 preview_rebuilt printed
 ```
+
+Commit containing the update: `09c52f2`.
