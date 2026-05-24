@@ -881,3 +881,5 @@ preview_rebuilt 已打印
   忽略普通弹幕造成的高序号 false positive。
 - 新增 `tests/test_receiver_realtime_compact.py`，使用用户这次实际发送日志里的
   14 条 compact payload；不带 `fin` 也能解出 `a`，混入 `反你的野!!!!!` 也能解。
+
+对应功能提交：`b2bca1b`。

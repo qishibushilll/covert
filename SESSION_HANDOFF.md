@@ -752,3 +752,5 @@ Current fix:
 - Added `tests/test_receiver_realtime_compact.py` using the user's actual
   realtime compact payloads, with no `fin`, plus one high-sequence false
   positive before the payloads. Both decode to `a`.
+
+Commit containing the update: `b2bca1b`.
