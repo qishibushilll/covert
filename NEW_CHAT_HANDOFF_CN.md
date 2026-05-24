@@ -772,3 +772,29 @@ room 6 dry-run 无发送验证结果：
 注意：`src/live_bullet_covert/send_policy.py` 里用户本地可能把 `DEFAULT_AUTHORIZED_ROOM_ID` 改成了 `6`。这不是本次修复的一部分，不要误提交或覆盖，除非用户明确要求。
 
 对应修复提交：`9b9d443`。
+
+## 2026-05-24 room 6 输入框等待修复
+
+用户又反馈仍然出现：
+
+```text
+input_candidates=[INPUT cls=nav-search-input ... is_chat_input=False]
+live chat input not found
+```
+
+进一步诊断结果：
+
+- 显示房间 `6` 当前是 B 站 LPL 赛事/活动外层页。
+- 真正直播间在 iframe 里，真实 room id 是 `7734200`。
+- 固定 `--page-wait` 后马上检测时，有时 iframe 弹幕输入框还没初始化，只能看到顶部搜索框。
+- 过几秒再连同一个 CDP 页面，可以看到
+  `TEXTAREA cls='chat-input border-box' placeholder='发个弹幕呗~' is_chat_input=True`。
+
+已修复：
+
+- 浏览器导航改为使用 `room_style.room_init()` 解析出的真实房间号，所以 `--room 6` 会打开 `https://live.bilibili.com/7734200`。
+- 输入框检测会扫描同源 iframe、shadow DOM、`contenteditable` 和 `role=textbox`。
+- `send_browser_cdp.py` 新增 `--input-wait` 和 `--input-poll`，默认在 `--page-wait` 后再轮询 30 秒等待直播弹幕输入框。
+- 保护仍保留：轮询后如果还是没有可见直播输入框，真实 `--send` 会停止，并打印完整页面诊断，不会发到搜索框。
+
+已用无发送 dry-run 验证：`--room 6` 实际导航到 `7734200`，并检测到 iframe 里的 `TEXTAREA.chat-input border-box`。

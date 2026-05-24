@@ -116,6 +116,10 @@ The browser sender also refuses real sends unless a visible live-chat input is
 found. If `input_candidates` only contains a search box such as
 `nav-search-input`, the run stops before sending because those messages would
 not enter the live room and the receiver would keep listening without decoding.
+The sender now navigates Chrome to the resolved room id from room initialization
+and then polls for the live-chat input after `--page-wait` (`--input-wait`,
+default `30` seconds). This handles display rooms such as `6` that render a
+赛事/活动 outer page before the real live room iframe becomes ready.
 
 Payload comments use the built-in humanized codebook by default. To explicitly
 wrap compact carrier records in a learned template file during a dry run or an

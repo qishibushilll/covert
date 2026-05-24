@@ -563,3 +563,63 @@ Important local state:
   and should not be mixed into code commits.
 
 Commit: `9b9d443`
+
+## Update: 2026-05-24 Resolved-Room Navigation and Input Wait
+
+Files changed:
+
+- `src/live_bullet_covert/browser_cdp.py`
+- `scripts/bilibili/send_browser_cdp.py`
+- `README.md`
+- `docs/handoff/WORK_LOG.md`
+- `NEW_CHAT_HANDOFF_CN.md`
+- `SESSION_HANDOFF.md`
+
+Root cause of the latest `live chat input not found` report:
+
+- Room display id `6` currently renders a Bilibili LPL赛事/活动 outer page.
+- The normal live-room UI is inside an iframe pointing at
+  `https://live.bilibili.com/blanc/7734200?liteVersion=true`.
+- A fixed post-navigation sleep can run before the iframe exposes the real
+  `TEXTAREA.chat-input`; at that moment only `nav-search-input` is visible.
+
+Behavioral summary:
+
+- `browser_cdp` input discovery now scans same-origin iframes, shadow roots,
+  `[contenteditable]`, and `role=textbox`, and can print hidden/all candidates
+  plus page diagnostics.
+- `send_browser_cdp.py` now navigates Chrome to the resolved actual room id
+  returned by `room_style.room_init()`, so `--room 6` opens
+  `https://live.bilibili.com/7734200` instead of staying on the outer display
+  room page.
+- Added `--input-wait` and `--input-poll`; after `--page-wait`, the sender
+  polls for a visible live-chat input before deciding that the page is not
+  ready.
+- The send refusal is still intact: if no chat input is visible after polling,
+  real `--send` stops and prints diagnostics instead of using the search box.
+
+Validation:
+
+```powershell
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 -m py_compile '.\src\live_bullet_covert\browser_cdp.py' '.\scripts\bilibili\send_browser_cdp.py' '.\scripts\bilibili\probes\full_http_sender.py' '.\tests\test_sender_payload_modes.py'
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\tests\test_sender_payload_modes.py'
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\tests\test_online_style.py'
+```
+
+Result: passed.
+
+Room-6 dry-run, no send:
+
+```powershell
+& 'D:\Study\CovLBCG\.venv\Scripts\python.exe' -X utf8 '.\scripts\bilibili\send_browser_cdp.py' --room 6 --online-style-source-room 6 --message 'a#' --replicas 1 --fillers 0 --realtime-online-style --realtime-template-payloads --realtime-template-min-samples 4 --realtime-template-wait 5 --realtime-online-style-seconds 20 --online-style-target 20 --online-style-min-samples 999 --adaptive-sleep --sleep 10 --min-sleep 10 --page-wait 8 --input-wait 30 --warmup-count 1 --max-comments 30 --port 9358 --user-data-dir 'local_secrets\chrome_profiles\chrome_cdp_profile_room6_waitinput_dryrun'
+```
+
+Observed result:
+
+- `room_display_id=6`, `room_id=7734200`.
+- Browser navigated to `https://live.bilibili.com/7734200`.
+- `input_candidates` included the real iframe chat box:
+  `TEXTAREA cls='chat-input border-box' placeholder='发个弹幕呗~' is_chat_input=True`.
+- No `--send` was used; no comments were sent.
+- Realtime template rebuild still correctly refused when usable long wrappers
+  were only `3/4` in that short sampling window.

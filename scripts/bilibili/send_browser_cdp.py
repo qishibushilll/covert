@@ -211,6 +211,28 @@ def has_live_chat_input(candidates_result):
     return any(candidate.get("is_chat_input") for candidate in candidates)
 
 
+def browser_page_diagnostics(cdp):
+    all_inputs = cdp.eval(browser_cdp.FIND_ALL_INPUTS_JS)
+    diagnostics = cdp.eval(browser_cdp.PAGE_DIAGNOSTICS_JS)
+    return {
+        "all_inputs": all_inputs.get("result", {}).get("value"),
+        "page": diagnostics.get("result", {}).get("value"),
+    }
+
+
+def wait_for_live_chat_input(cdp, timeout, poll_interval):
+    deadline = time.time() + max(0.0, timeout)
+    last_candidates = None
+    while True:
+        candidates = cdp.eval(browser_cdp.FIND_INPUT_JS)
+        last_candidates = candidates
+        if has_live_chat_input(candidates):
+            return candidates
+        if time.time() >= deadline:
+            return last_candidates
+        time.sleep(max(0.2, poll_interval))
+
+
 def current_send_sleep(args, style_learning, realtime_monitor, base_send_sleep):
     if realtime_monitor is not None and args.adaptive_sleep:
         snapshot = realtime_monitor.snapshot()
@@ -244,6 +266,18 @@ def main():
     parser.add_argument("--sleep", type=float, default=send_policy.DEFAULT_MIN_SEND_SLEEP)
     parser.add_argument("--min-sleep", type=float, default=send_policy.DEFAULT_MIN_SEND_SLEEP)
     parser.add_argument("--page-wait", type=float, default=25.0)
+    parser.add_argument(
+        "--input-wait",
+        type=float,
+        default=30.0,
+        help="Extra seconds to poll for a visible live chat input after page-wait.",
+    )
+    parser.add_argument(
+        "--input-poll",
+        type=float,
+        default=1.0,
+        help="Polling interval while waiting for the live chat input.",
+    )
     parser.add_argument("--warmup-count", type=int, default=3)
     parser.add_argument("--max-comments", type=int, default=send_policy.DEFAULT_SEND_MAX_COMMENTS)
     parser.add_argument("--port", type=int, default=9333)
@@ -465,13 +499,18 @@ def main():
         cdp.call("Page.enable")
         cdp.call("Network.enable")
         browser_cdp.set_bilibili_cookies(cdp, browser_cdp.load_cookies())
-        live_url = f"https://live.bilibili.com/{args.room}"
+        browser_room_id = actual_room_id or args.room
+        live_url = f"https://live.bilibili.com/{browser_room_id}"
         print(f"[browser] navigating {live_url}")
         cdp.call("Page.navigate", {"url": live_url})
         print(f"[browser] waiting {args.page_wait:.1f}s for live chat readiness")
         time.sleep(args.page_wait)
-        candidates = cdp.eval(browser_cdp.FIND_INPUT_JS)
+        candidates = wait_for_live_chat_input(cdp, args.input_wait, args.input_poll)
         print(f"[browser] input_candidates={candidates.get('result', {}).get('value')}")
+        if not has_live_chat_input(candidates):
+            diagnostics = browser_page_diagnostics(cdp)
+            print(f"[browser] all_input_candidates={diagnostics['all_inputs']}")
+            print(f"[browser] page_diagnostics={diagnostics['page']}")
         if args.send and not has_live_chat_input(candidates):
             raise SystemExit(
                 "live chat input not found; refusing to send because only non-chat inputs are visible"

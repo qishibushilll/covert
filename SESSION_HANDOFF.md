@@ -625,3 +625,34 @@ to `DEFAULT_AUTHORIZED_ROOM_ID = 6` is not part of this fix and should not be
 committed unless explicitly requested.
 
 Commit containing the fix: `9b9d443`.
+
+## 2026-05-24 room-6 input wait update
+
+A follow-up user screenshot still showed:
+
+```text
+input_candidates=[INPUT cls=nav-search-input ... is_chat_input=False]
+live chat input not found
+```
+
+Diagnosis:
+
+- Display room `6` is an LPL赛事/活动 outer page.
+- The real live-room iframe points to room id `7734200`.
+- The chat input can appear a few seconds after the fixed `--page-wait`; reading
+  the retained CDP page later showed
+  `TEXTAREA cls='chat-input border-box' placeholder='发个弹幕呗~'`.
+
+Current fix:
+
+- Browser navigation uses the resolved actual room id returned by
+  `room_style.room_init()`, so `--room 6` opens
+  `https://live.bilibili.com/7734200`.
+- Input discovery scans same-origin iframes and shadow roots.
+- `send_browser_cdp.py` has `--input-wait` and `--input-poll`, defaulting to an
+  extra 30-second poll window after `--page-wait`.
+- Real sends still stop if no visible live-chat input is found after polling.
+
+Validated by dry-run with no `--send`: `--room 6` navigated to room `7734200`
+and `input_candidates` included `TEXTAREA chat-input border-box` with
+`is_chat_input=True`.

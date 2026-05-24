@@ -224,86 +224,160 @@ def set_bilibili_cookies(cdp, cookies):
             pass
 
 
+INPUT_HELPER_JS = r"""
+const visible = (el) => {
+  const r = el.getBoundingClientRect();
+  const view = el.ownerDocument && el.ownerDocument.defaultView || window;
+  const s = view.getComputedStyle(el);
+  return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none';
+};
+const textOf = (el) => [
+  el.tagName,
+  el.id || '',
+  el.className || '',
+  el.getAttribute('placeholder') || '',
+  el.getAttribute('aria-label') || '',
+  el.getAttribute('role') || '',
+  el.getAttribute('contenteditable') || ''
+].join(' ').toLowerCase();
+const isSearch = (el) => {
+  const text = textOf(el);
+  return text.includes('search') || text.includes('nav-search') || text.includes('搜索');
+};
+const isChatInput = (el) => {
+  if (isSearch(el)) return false;
+  const text = textOf(el);
+  return (
+    text.includes('chat-input') ||
+    text.includes('danmaku') ||
+    text.includes('comment') ||
+    text.includes('弹幕') ||
+    text.includes('发个') ||
+    text.includes('聊天')
+  );
+};
+const inputSelectors = [
+  'textarea',
+  'input[type="text"]',
+  'input:not([type])',
+  '[contenteditable]',
+  '[role="textbox"]'
+];
+const describeInput = (el, framePath, index) => ({
+  i: index,
+  frame_path: framePath,
+  tag: el.tagName,
+  cls: String(el.className || ''),
+  id: String(el.id || ''),
+  placeholder: String(el.getAttribute('placeholder') || ''),
+  role: String(el.getAttribute('role') || ''),
+  contenteditable: String(el.getAttribute('contenteditable') || ''),
+  is_visible: visible(el),
+  is_chat_input: isChatInput(el),
+  is_search: isSearch(el),
+  text: String(el.innerText || el.value || '').slice(0, 40)
+});
+const collectInputElements = (root, framePath, output) => {
+  for (const selector of inputSelectors) {
+    for (const el of root.querySelectorAll(selector)) {
+      output.push({el, framePath});
+    }
+  }
+  for (const el of root.querySelectorAll('*')) {
+    if (el.shadowRoot) {
+      collectInputElements(el.shadowRoot, framePath + ' > shadow:' + (el.tagName || 'node'), output);
+    }
+  }
+  for (const frame of root.querySelectorAll('iframe,frame')) {
+    let childDoc = null;
+    try {
+      childDoc = frame.contentDocument;
+    } catch (error) {
+      childDoc = null;
+    }
+    if (childDoc) {
+      const frameLabel = frame.getAttribute('name') || frame.getAttribute('id') || frame.getAttribute('src') || 'frame';
+      collectInputElements(childDoc, framePath + ' > ' + frameLabel, output);
+    }
+  }
+};
+const collectInputs = (includeHidden=false) => {
+  const pairs = [];
+  collectInputElements(document, 'top', pairs);
+  const seen = new Set();
+  const result = [];
+  for (const pair of pairs) {
+    if (seen.has(pair.el)) continue;
+    seen.add(pair.el);
+    if (!includeHidden && !visible(pair.el)) continue;
+    result.push({el: pair.el, framePath: pair.framePath});
+  }
+  return result;
+};
+"""
+
+
 FIND_INPUT_JS = r"""
 (() => {
-  const visible = (el) => {
-    const r = el.getBoundingClientRect();
-    const s = getComputedStyle(el);
-    return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none';
+  %s
+  const candidates = collectInputs(false);
+  return candidates.map((item, i) => describeInput(item.el, item.framePath, i));
+})()
+""" % INPUT_HELPER_JS
+
+
+FIND_ALL_INPUTS_JS = r"""
+(() => {
+  %s
+  const candidates = collectInputs(true);
+  return candidates.map((item, i) => describeInput(item.el, item.framePath, i));
+})()
+""" % INPUT_HELPER_JS
+
+
+PAGE_DIAGNOSTICS_JS = r"""
+(() => {
+  const frameInfo = [];
+  for (const frame of document.querySelectorAll('iframe,frame')) {
+    const r = frame.getBoundingClientRect();
+    let accessible = false;
+    let childTitle = '';
+    let childText = '';
+    try {
+      accessible = !!frame.contentDocument;
+      childTitle = accessible ? frame.contentDocument.title : '';
+      childText = accessible && frame.contentDocument.body ? String(frame.contentDocument.body.innerText || '').slice(0, 200) : '';
+    } catch (error) {
+      accessible = false;
+    }
+    frameInfo.push({
+      id: String(frame.id || ''),
+      name: String(frame.name || ''),
+      src: String(frame.src || ''),
+      visible_rect: {width: r.width, height: r.height},
+      accessible,
+      title: childTitle,
+      text: childText
+    });
+  }
+  const bodyText = String(document.body ? document.body.innerText || '' : '');
+  return {
+    url: location.href,
+    title: document.title,
+    ready_state: document.readyState,
+    body_text_head: bodyText.slice(0, 500),
+    has_login_hint: /登录|请先登录|未登录|账号|验证码/.test(bodyText),
+    has_chat_hint: /弹幕|发个弹幕|聊天|发送/.test(bodyText),
+    iframe_count: frameInfo.length,
+    iframes: frameInfo
   };
-  const textOf = (el) => [
-    el.tagName,
-    el.id || '',
-    el.className || '',
-    el.getAttribute('placeholder') || '',
-    el.getAttribute('aria-label') || ''
-  ].join(' ').toLowerCase();
-  const isSearch = (el) => {
-    const text = textOf(el);
-    return text.includes('search') || text.includes('nav-search') || text.includes('搜索');
-  };
-  const isChatInput = (el) => {
-    if (isSearch(el)) return false;
-    const text = textOf(el);
-    return (
-      text.includes('chat-input') ||
-      text.includes('danmaku') ||
-      text.includes('comment') ||
-      text.includes('弹幕') ||
-      text.includes('发个') ||
-      text.includes('聊天')
-    );
-  };
-  const candidates = [
-    ...document.querySelectorAll('textarea'),
-    ...document.querySelectorAll('input[type="text"]'),
-    ...document.querySelectorAll('[contenteditable="true"]'),
-    ...document.querySelectorAll('[contenteditable="plaintext-only"]')
-  ].filter(visible);
-  return candidates.map((el, i) => ({
-    i,
-    tag: el.tagName,
-    cls: String(el.className || ''),
-    id: String(el.id || ''),
-    placeholder: String(el.getAttribute('placeholder') || ''),
-    is_chat_input: isChatInput(el),
-    is_search: isSearch(el),
-    text: String(el.innerText || el.value || '').slice(0, 40)
-  }));
 })()
 """
 
 
 FOCUS_INPUT_JS = r"""
 (() => {
-  const visible = (el) => {
-    const r = el.getBoundingClientRect();
-    const s = getComputedStyle(el);
-    return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none';
-  };
-  const textOf = (el) => [
-    el.tagName,
-    el.id || '',
-    el.className || '',
-    el.getAttribute('placeholder') || '',
-    el.getAttribute('aria-label') || ''
-  ].join(' ').toLowerCase();
-  const isSearch = (el) => {
-    const text = textOf(el);
-    return text.includes('search') || text.includes('nav-search') || text.includes('搜索');
-  };
-  const isChatInput = (el) => {
-    if (isSearch(el)) return false;
-    const text = textOf(el);
-    return (
-      text.includes('chat-input') ||
-      text.includes('danmaku') ||
-      text.includes('comment') ||
-      text.includes('弹幕') ||
-      text.includes('发个') ||
-      text.includes('聊天')
-    );
-  };
+  %s
   const selectors = [
     'textarea.chat-input',
     'textarea[class*="chat-input"]',
@@ -324,8 +398,31 @@ FOCUS_INPUT_JS = r"""
     '[contenteditable="plaintext-only"][class*="danmaku"]',
     '[contenteditable="plaintext-only"][class*="comment"]'
   ];
-  for (const selector of selectors) {
-    for (const el of document.querySelectorAll(selector)) {
+  const roots = collectInputs(true).map(item => item.el.getRootNode());
+  roots.unshift(document);
+  const uniqueRoots = [...new Set(roots)];
+  for (const root of uniqueRoots) {
+    for (const selector of selectors) {
+      for (const el of root.querySelectorAll(selector)) {
+        if (!visible(el)) continue;
+        if (!isChatInput(el)) continue;
+        el.scrollIntoView({block: 'center'});
+        el.focus();
+        return {
+          ok: true,
+          tag: el.tagName,
+          cls: String(el.className || ''),
+          id: String(el.id || ''),
+          placeholder: String(el.getAttribute('placeholder') || ''),
+          role: String(el.getAttribute('role') || ''),
+          contenteditable: String(el.getAttribute('contenteditable') || ''),
+          is_chat_input: true
+        };
+      }
+    }
+  }
+  for (const item of collectInputs(false)) {
+    const el = item.el;
       if (!visible(el)) continue;
       if (!isChatInput(el)) continue;
       el.scrollIntoView({block: 'center'});
@@ -336,13 +433,14 @@ FOCUS_INPUT_JS = r"""
         cls: String(el.className || ''),
         id: String(el.id || ''),
         placeholder: String(el.getAttribute('placeholder') || ''),
+        role: String(el.getAttribute('role') || ''),
+        contenteditable: String(el.getAttribute('contenteditable') || ''),
         is_chat_input: true
       };
-    }
   }
   return {ok: false, reason: 'live_chat_input_not_found', candidates: (%s)};
 })()
-""" % FIND_INPUT_JS
+""" % (INPUT_HELPER_JS, FIND_INPUT_JS)
 
 
 def js_string(value):
