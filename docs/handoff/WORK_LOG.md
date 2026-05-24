@@ -623,3 +623,5 @@ Observed result:
 - No `--send` was used; no comments were sent.
 - Realtime template rebuild still correctly refused when usable long wrappers
   were only `3/4` in that short sampling window.
+
+Commit: `12ff6bf`

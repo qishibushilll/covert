@@ -798,3 +798,5 @@ live chat input not found
 - 保护仍保留：轮询后如果还是没有可见直播输入框，真实 `--send` 会停止，并打印完整页面诊断，不会发到搜索框。
 
 已用无发送 dry-run 验证：`--room 6` 实际导航到 `7734200`，并检测到 iframe 里的 `TEXTAREA.chat-input border-box`。
+
+对应修复提交：`12ff6bf`。

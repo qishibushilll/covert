@@ -656,3 +656,5 @@ Current fix:
 Validated by dry-run with no `--send`: `--room 6` navigated to room `7734200`
 and `input_candidates` included `TEXTAREA chat-input border-box` with
 `is_chat_input=True`.
+
+Commit containing the update: `12ff6bf`.
